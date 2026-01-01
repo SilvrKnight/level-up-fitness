@@ -6,8 +6,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, X, Sparkles, Loader2 } from 'lucide-react';
 import { IngredientRow } from './IngredientRow';
-import { ApiKeyModal } from './ApiKeyModal';
-import { useDeepSeekKey } from '@/hooks/useDeepSeekKey';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Ingredient, calculateMealTotals } from '@/types/meal';
@@ -38,7 +36,6 @@ const createEmptyIngredient = (): Ingredient => ({
 
 export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading }) => {
   const { toast } = useToast();
-  const { apiKey, setApiKey, hasApiKey } = useDeepSeekKey();
   
   const [mealName, setMealName] = useState('');
   const [timeConsumed, setTimeConsumed] = useState(new Date().toTimeString().slice(0, 5));
@@ -46,7 +43,6 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
   const [ingredients, setIngredients] = useState<Ingredient[]>([createEmptyIngredient()]);
   const [pasteText, setPasteText] = useState('');
   const [parsing, setParsing] = useState(false);
-  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
 
   const handleIngredientChange = (id: string, field: keyof Ingredient, value: string | number | boolean) => {
     setIngredients(prev =>
@@ -74,15 +70,10 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
       return;
     }
 
-    if (!hasApiKey) {
-      setShowApiKeyModal(true);
-      return;
-    }
-
     setParsing(true);
     try {
       const { data, error } = await supabase.functions.invoke('parse-ingredients', {
-        body: { text: pasteText, apiKey },
+        body: { text: pasteText },
       });
 
       if (error) throw error;
@@ -115,21 +106,11 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
       }
     } catch (error: any) {
       console.error('Error parsing ingredients:', error);
-      
-      if (error.message?.includes('Invalid DeepSeek API key') || error.message?.includes('401')) {
-        toast({
-          title: 'Invalid API Key',
-          description: 'Please check your DeepSeek API key and try again',
-          variant: 'destructive',
-        });
-        setShowApiKeyModal(true);
-      } else {
-        toast({
-          title: 'Parsing failed',
-          description: error.message || 'Failed to parse ingredients',
-          variant: 'destructive',
-        });
-      }
+      toast({
+        title: 'Parsing failed',
+        description: error.message || 'Failed to parse ingredients',
+        variant: 'destructive',
+      });
     } finally {
       setParsing(false);
     }
@@ -251,11 +232,6 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
                   </>
                 )}
               </Button>
-              {!hasApiKey && (
-                <p className="text-xs text-muted-foreground">
-                  Requires DeepSeek API key. You'll be prompted on first use.
-                </p>
-              )}
             </div>
 
             {/* Ingredients List */}
@@ -331,12 +307,6 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
           </form>
         </CardContent>
       </Card>
-
-      <ApiKeyModal
-        open={showApiKeyModal}
-        onOpenChange={setShowApiKeyModal}
-        onSave={setApiKey}
-      />
     </>
   );
 };

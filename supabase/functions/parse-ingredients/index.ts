@@ -22,7 +22,7 @@ serve(async (req) => {
   }
 
   try {
-    const { text, apiKey } = await req.json();
+    const { text } = await req.json();
 
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
       return new Response(
@@ -31,10 +31,12 @@ serve(async (req) => {
       );
     }
 
-    if (!apiKey || typeof apiKey !== 'string') {
+    const apiKey = Deno.env.get('DEEPSEEK_API_KEY');
+    if (!apiKey) {
+      console.error('DEEPSEEK_API_KEY not configured');
       return new Response(
-        JSON.stringify({ error: 'DeepSeek API key is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'DeepSeek API key not configured on server' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
