@@ -1,1 +1,4 @@
 project_id = "seutomqtfbuclslazxyt"
+
+[functions.parse-ingredients]
+verify_jwt = true
