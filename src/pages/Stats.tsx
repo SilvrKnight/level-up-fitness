@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Layout } from '@/components/layout/Layout';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { MealForm } from '@/components/stats/MealForm';
+import { MealForm, MealFormData } from '@/components/stats/MealForm';
 import { MealCard } from '@/components/stats/MealCard';
 import { MacroProgress } from '@/components/stats/MacroProgress';
 import { useMeals } from '@/hooks/useMeals';
@@ -35,7 +35,7 @@ const Stats: React.FC = () => {
   const targetFats = Math.round((targetCalories * 0.25) / 9); // 25% from fats
   const targetFiber = 30; // Standard recommendation
 
-  const handleAddMeal = async (mealData: any) => {
+  const handleAddMeal = async (mealData: MealFormData) => {
     const success = await addMeal(mealData);
     if (success) {
       setShowMealForm(false);

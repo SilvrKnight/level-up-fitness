@@ -139,6 +139,68 @@ export type Database = {
         }
         Relationships: []
       }
+      meal_ingredients: {
+        Row: {
+          calories_total: number | null
+          carbs_per_100g: number
+          carbs_total: number | null
+          created_at: string
+          fats_per_100g: number
+          fats_total: number | null
+          fiber_per_100g: number
+          fiber_total: number | null
+          grams: number
+          id: string
+          ingredient_name: string
+          is_ai_estimated: boolean | null
+          meal_id: string
+          protein_per_100g: number
+          protein_total: number | null
+        }
+        Insert: {
+          calories_total?: number | null
+          carbs_per_100g?: number
+          carbs_total?: number | null
+          created_at?: string
+          fats_per_100g?: number
+          fats_total?: number | null
+          fiber_per_100g?: number
+          fiber_total?: number | null
+          grams: number
+          id?: string
+          ingredient_name: string
+          is_ai_estimated?: boolean | null
+          meal_id: string
+          protein_per_100g?: number
+          protein_total?: number | null
+        }
+        Update: {
+          calories_total?: number | null
+          carbs_per_100g?: number
+          carbs_total?: number | null
+          created_at?: string
+          fats_per_100g?: number
+          fats_total?: number | null
+          fiber_per_100g?: number
+          fiber_total?: number | null
+          grams?: number
+          id?: string
+          ingredient_name?: string
+          is_ai_estimated?: boolean | null
+          meal_id?: string
+          protein_per_100g?: number
+          protein_total?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meal_ingredients_meal_id_fkey"
+            columns: ["meal_id"]
+            isOneToOne: false
+            referencedRelation: "meals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       meals: {
         Row: {
           calories: number | null
@@ -150,6 +212,7 @@ export type Database = {
           ingredients: string | null
           meal_date: string
           meal_name: string
+          notes: string | null
           protein_grams: number | null
           time_consumed: string | null
           total_weight_grams: number | null
@@ -165,6 +228,7 @@ export type Database = {
           ingredients?: string | null
           meal_date?: string
           meal_name: string
+          notes?: string | null
           protein_grams?: number | null
           time_consumed?: string | null
           total_weight_grams?: number | null
@@ -180,6 +244,7 @@ export type Database = {
           ingredients?: string | null
           meal_date?: string
           meal_name?: string
+          notes?: string | null
           protein_grams?: number | null
           time_consumed?: string | null
           total_weight_grams?: number | null

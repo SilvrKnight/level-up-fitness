@@ -4,19 +4,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Plus, X } from 'lucide-react';
-
-interface MealFormData {
-  meal_name: string;
-  ingredients: string;
-  total_weight_grams: number;
-  time_consumed: string;
-  calories: number;
-  protein_grams: number;
-  carbs_grams: number;
-  fats_grams: number;
-  fiber_grams: number;
-}
+import { Plus, X, Sparkles, Loader2 } from 'lucide-react';
+import { IngredientRow } from './IngredientRow';
+import { ApiKeyModal } from './ApiKeyModal';
+import { useDeepSeekKey } from '@/hooks/useDeepSeekKey';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { Ingredient, calculateMealTotals } from '@/types/meal';
 
 interface MealFormProps {
   onSubmit: (data: MealFormData) => void;
@@ -24,169 +18,325 @@ interface MealFormProps {
   loading?: boolean;
 }
 
-export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading }) => {
-  const [formData, setFormData] = useState<MealFormData>({
-    meal_name: '',
-    ingredients: '',
-    total_weight_grams: 0,
-    time_consumed: new Date().toTimeString().slice(0, 5),
-    calories: 0,
-    protein_grams: 0,
-    carbs_grams: 0,
-    fats_grams: 0,
-    fiber_grams: 0,
-  });
+export interface MealFormData {
+  meal_name: string;
+  time_consumed: string;
+  notes: string;
+  ingredients: Ingredient[];
+}
 
-  const handleChange = (field: keyof MealFormData, value: string | number) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+const createEmptyIngredient = (): Ingredient => ({
+  id: crypto.randomUUID(),
+  ingredient_name: '',
+  grams: 0,
+  protein_per_100g: 0,
+  carbs_per_100g: 0,
+  fats_per_100g: 0,
+  fiber_per_100g: 0,
+  is_ai_estimated: false,
+});
+
+export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading }) => {
+  const { toast } = useToast();
+  const { apiKey, setApiKey, hasApiKey } = useDeepSeekKey();
+  
+  const [mealName, setMealName] = useState('');
+  const [timeConsumed, setTimeConsumed] = useState(new Date().toTimeString().slice(0, 5));
+  const [notes, setNotes] = useState('');
+  const [ingredients, setIngredients] = useState<Ingredient[]>([createEmptyIngredient()]);
+  const [pasteText, setPasteText] = useState('');
+  const [parsing, setParsing] = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+
+  const handleIngredientChange = (id: string, field: keyof Ingredient, value: string | number | boolean) => {
+    setIngredients(prev =>
+      prev.map(ing =>
+        ing.id === id ? { ...ing, [field]: value } : ing
+      )
+    );
+  };
+
+  const handleAddIngredient = () => {
+    setIngredients(prev => [...prev, createEmptyIngredient()]);
+  };
+
+  const handleRemoveIngredient = (id: string) => {
+    setIngredients(prev => prev.filter(ing => ing.id !== id));
+  };
+
+  const handleParseIngredients = async () => {
+    if (!pasteText.trim()) {
+      toast({
+        title: 'Empty input',
+        description: 'Please paste some ingredients to parse',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!hasApiKey) {
+      setShowApiKeyModal(true);
+      return;
+    }
+
+    setParsing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('parse-ingredients', {
+        body: { text: pasteText, apiKey },
+      });
+
+      if (error) throw error;
+
+      if (data?.ingredients && Array.isArray(data.ingredients)) {
+        const parsedIngredients: Ingredient[] = data.ingredients.map((ing: any) => ({
+          id: crypto.randomUUID(),
+          ingredient_name: ing.ingredient_name,
+          grams: ing.grams,
+          protein_per_100g: ing.protein_per_100g,
+          carbs_per_100g: ing.carbs_per_100g,
+          fats_per_100g: ing.fats_per_100g,
+          fiber_per_100g: ing.fiber_per_100g,
+          is_ai_estimated: true,
+        }));
+
+        // Replace empty ingredients or add to existing
+        const hasValidIngredients = ingredients.some(ing => ing.ingredient_name.trim());
+        if (hasValidIngredients) {
+          setIngredients(prev => [...prev, ...parsedIngredients]);
+        } else {
+          setIngredients(parsedIngredients);
+        }
+        
+        setPasteText('');
+        toast({
+          title: 'Ingredients parsed',
+          description: `Added ${parsedIngredients.length} ingredients from AI`,
+        });
+      }
+    } catch (error: any) {
+      console.error('Error parsing ingredients:', error);
+      
+      if (error.message?.includes('Invalid DeepSeek API key') || error.message?.includes('401')) {
+        toast({
+          title: 'Invalid API Key',
+          description: 'Please check your DeepSeek API key and try again',
+          variant: 'destructive',
+        });
+        setShowApiKeyModal(true);
+      } else {
+        toast({
+          title: 'Parsing failed',
+          description: error.message || 'Failed to parse ingredients',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setParsing(false);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+
+    // Validation
+    if (!mealName.trim()) {
+      toast({
+        title: 'Meal name required',
+        description: 'Please enter a meal name',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const validIngredients = ingredients.filter(
+      ing => ing.ingredient_name.trim() && ing.grams > 0
+    );
+
+    if (validIngredients.length === 0) {
+      toast({
+        title: 'Ingredients required',
+        description: 'Add at least one ingredient with a name and weight',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    onSubmit({
+      meal_name: mealName,
+      time_consumed: timeConsumed,
+      notes,
+      ingredients: validIngredients,
+    });
   };
 
-  // Auto-calculate calories from macros (rough estimate)
-  const calculateCalories = () => {
-    const proteinCals = formData.protein_grams * 4;
-    const carbsCals = formData.carbs_grams * 4;
-    const fatsCals = formData.fats_grams * 9;
-    const total = proteinCals + carbsCals + fatsCals;
-    handleChange('calories', total);
-  };
+  const totals = calculateMealTotals(ingredients.filter(ing => ing.grams > 0));
 
   return (
-    <Card glow className="border-primary/50">
-      <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">Add Meal</CardTitle>
-          <Button variant="ghost" size="icon" onClick={onCancel}>
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2 space-y-2">
-              <Label htmlFor="meal_name">Meal Name</Label>
-              <Input
-                id="meal_name"
-                placeholder="e.g., Chicken Rice Bowl"
-                value={formData.meal_name}
-                onChange={(e) => handleChange('meal_name', e.target.value)}
-                required
-              />
+    <>
+      <Card glow className="border-primary/50">
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Add Meal</CardTitle>
+            <Button variant="ghost" size="icon" onClick={onCancel}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Meal Details */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2 md:col-span-1 space-y-2">
+                <Label htmlFor="meal_name">Meal Name *</Label>
+                <Input
+                  id="meal_name"
+                  placeholder="e.g., Chicken Rice Bowl"
+                  value={mealName}
+                  onChange={(e) => setMealName(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="col-span-2 md:col-span-1 space-y-2">
+                <Label htmlFor="time_consumed">Time Consumed</Label>
+                <Input
+                  id="time_consumed"
+                  type="time"
+                  value={timeConsumed}
+                  onChange={(e) => setTimeConsumed(e.target.value)}
+                />
+              </div>
+
+              <div className="col-span-2 space-y-2">
+                <Label htmlFor="notes">Notes (optional)</Label>
+                <Textarea
+                  id="notes"
+                  placeholder="Any additional notes about this meal..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="min-h-[60px] bg-muted border-border text-foreground"
+                />
+              </div>
             </div>
 
-            <div className="col-span-2 space-y-2">
-              <Label htmlFor="ingredients">Ingredients</Label>
+            {/* AI Ingredient Parsing */}
+            <div className="border border-dashed border-primary/30 rounded-lg p-4 space-y-3 bg-primary/5">
+              <div className="flex items-center gap-2 text-sm font-medium text-primary">
+                <Sparkles className="h-4 w-4" />
+                AI Ingredient Parser (Optional)
+              </div>
               <Textarea
-                id="ingredients"
-                placeholder="e.g., 200g chicken breast, 150g rice, vegetables..."
-                value={formData.ingredients}
-                onChange={(e) => handleChange('ingredients', e.target.value)}
-                className="min-h-[80px] bg-muted border-border text-foreground"
+                placeholder="Paste ingredients here, e.g.: 200g chicken breast, 150g cooked rice, 10g olive oil"
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                className="min-h-[60px] bg-background border-border text-foreground"
               />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleParseIngredients}
+                disabled={parsing || !pasteText.trim()}
+                className="border-primary/50 text-primary hover:bg-primary/10"
+              >
+                {parsing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Parsing...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Parse with AI
+                  </>
+                )}
+              </Button>
+              {!hasApiKey && (
+                <p className="text-xs text-muted-foreground">
+                  Requires DeepSeek API key. You'll be prompted on first use.
+                </p>
+              )}
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="total_weight">Total Weight (g)</Label>
-              <Input
-                id="total_weight"
-                type="number"
-                min="0"
-                value={formData.total_weight_grams || ''}
-                onChange={(e) => handleChange('total_weight_grams', Number(e.target.value))}
-              />
-            </div>
+            {/* Ingredients List */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-base font-medium">Ingredients *</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleAddIngredient}
+                  className="text-primary"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Ingredient
+                </Button>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="time_consumed">Time</Label>
-              <Input
-                id="time_consumed"
-                type="time"
-                value={formData.time_consumed}
-                onChange={(e) => handleChange('time_consumed', e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="border-t border-border pt-4">
-            <h4 className="text-sm font-medium text-muted-foreground mb-3">Macros</h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="protein" className="text-xs">Protein (g)</Label>
-                <Input
-                  id="protein"
-                  type="number"
-                  min="0"
-                  value={formData.protein_grams || ''}
-                  onChange={(e) => handleChange('protein_grams', Number(e.target.value))}
-                  onBlur={calculateCalories}
-                  className="h-9"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="carbs" className="text-xs">Carbs (g)</Label>
-                <Input
-                  id="carbs"
-                  type="number"
-                  min="0"
-                  value={formData.carbs_grams || ''}
-                  onChange={(e) => handleChange('carbs_grams', Number(e.target.value))}
-                  onBlur={calculateCalories}
-                  className="h-9"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fats" className="text-xs">Fats (g)</Label>
-                <Input
-                  id="fats"
-                  type="number"
-                  min="0"
-                  value={formData.fats_grams || ''}
-                  onChange={(e) => handleChange('fats_grams', Number(e.target.value))}
-                  onBlur={calculateCalories}
-                  className="h-9"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fiber" className="text-xs">Fiber (g)</Label>
-                <Input
-                  id="fiber"
-                  type="number"
-                  min="0"
-                  value={formData.fiber_grams || ''}
-                  onChange={(e) => handleChange('fiber_grams', Number(e.target.value))}
-                  className="h-9"
-                />
+              <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+                {ingredients.map((ingredient) => (
+                  <IngredientRow
+                    key={ingredient.id}
+                    ingredient={ingredient}
+                    onChange={handleIngredientChange}
+                    onRemove={handleRemoveIngredient}
+                    canRemove={ingredients.length > 1}
+                  />
+                ))}
               </div>
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="calories">Calories (auto-calculated or manual)</Label>
-            <Input
-              id="calories"
-              type="number"
-              min="0"
-              value={formData.calories || ''}
-              onChange={(e) => handleChange('calories', Number(e.target.value))}
-            />
-          </div>
+            {/* Meal Totals */}
+            <div className="border-t border-border pt-4">
+              <h4 className="text-sm font-medium text-muted-foreground mb-3">Meal Totals (Auto-calculated)</h4>
+              <div className="grid grid-cols-3 md:grid-cols-6 gap-3 text-center">
+                <div className="bg-muted/50 rounded-lg p-2">
+                  <div className="text-xs text-muted-foreground">Weight</div>
+                  <div className="font-semibold">{Math.round(totals.total_weight)}g</div>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-2">
+                  <div className="text-xs text-muted-foreground">Calories</div>
+                  <div className="font-semibold text-accent">{totals.total_calories}</div>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-2">
+                  <div className="text-xs text-muted-foreground">Protein</div>
+                  <div className="font-semibold text-success">{Math.round(totals.total_protein)}g</div>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-2">
+                  <div className="text-xs text-muted-foreground">Carbs</div>
+                  <div className="font-semibold text-warning">{Math.round(totals.total_carbs)}g</div>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-2">
+                  <div className="text-xs text-muted-foreground">Fats</div>
+                  <div className="font-semibold text-glow-blue">{Math.round(totals.total_fats)}g</div>
+                </div>
+                <div className="bg-muted/50 rounded-lg p-2">
+                  <div className="text-xs text-muted-foreground">Fiber</div>
+                  <div className="font-semibold">{Math.round(totals.total_fiber)}g</div>
+                </div>
+              </div>
+            </div>
 
-          <div className="flex gap-3 pt-2">
-            <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
-              Cancel
-            </Button>
-            <Button type="submit" variant="glow" disabled={loading} className="flex-1">
-              <Plus className="h-4 w-4 mr-2" />
-              {loading ? 'Adding...' : 'Add Meal'}
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
+            {/* Submit */}
+            <div className="flex gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={onCancel} className="flex-1">
+                Cancel
+              </Button>
+              <Button type="submit" variant="glow" disabled={loading} className="flex-1">
+                <Plus className="h-4 w-4 mr-2" />
+                {loading ? 'Adding...' : 'Add Meal'}
+              </Button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
+      <ApiKeyModal
+        open={showApiKeyModal}
+        onOpenChange={setShowApiKeyModal}
+        onSave={setApiKey}
+      />
+    </>
   );
 };
