@@ -256,6 +256,8 @@ export type Database = {
         Row: {
           age: number | null
           avatar_url: string | null
+          body_fat_percentage: number | null
+          body_fat_source: string | null
           created_at: string | null
           current_weight_kg: number | null
           email: string | null
@@ -263,16 +265,22 @@ export type Database = {
           gender: string | null
           height_cm: number | null
           id: string
+          lean_body_mass: number | null
           onboarding_completed: boolean | null
+          protein_basis: string | null
+          protein_multiplier: number | null
           target_goal: string | null
           training_frequency: number | null
           updated_at: string | null
           user_id: string
           uses_creatine: boolean | null
+          waist_cm: number | null
         }
         Insert: {
           age?: number | null
           avatar_url?: string | null
+          body_fat_percentage?: number | null
+          body_fat_source?: string | null
           created_at?: string | null
           current_weight_kg?: number | null
           email?: string | null
@@ -280,16 +288,22 @@ export type Database = {
           gender?: string | null
           height_cm?: number | null
           id?: string
+          lean_body_mass?: number | null
           onboarding_completed?: boolean | null
+          protein_basis?: string | null
+          protein_multiplier?: number | null
           target_goal?: string | null
           training_frequency?: number | null
           updated_at?: string | null
           user_id: string
           uses_creatine?: boolean | null
+          waist_cm?: number | null
         }
         Update: {
           age?: number | null
           avatar_url?: string | null
+          body_fat_percentage?: number | null
+          body_fat_source?: string | null
           created_at?: string | null
           current_weight_kg?: number | null
           email?: string | null
@@ -297,12 +311,16 @@ export type Database = {
           gender?: string | null
           height_cm?: number | null
           id?: string
+          lean_body_mass?: number | null
           onboarding_completed?: boolean | null
+          protein_basis?: string | null
+          protein_multiplier?: number | null
           target_goal?: string | null
           training_frequency?: number | null
           updated_at?: string | null
           user_id?: string
           uses_creatine?: boolean | null
+          waist_cm?: number | null
         }
         Relationships: []
       }

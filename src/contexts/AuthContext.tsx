@@ -16,6 +16,12 @@ interface UserProfile {
   target_goal: string | null;
   uses_creatine: boolean;
   onboarding_completed: boolean;
+  body_fat_percentage: number | null;
+  body_fat_source: string | null;
+  waist_cm: number | null;
+  lean_body_mass: number | null;
+  protein_basis: string | null;
+  protein_multiplier: number | null;
 }
 
 interface AuthContextType {
