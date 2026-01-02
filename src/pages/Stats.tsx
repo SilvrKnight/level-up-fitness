@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Layout } from '@/components/layout/Layout';
@@ -7,33 +7,47 @@ import { Button } from '@/components/ui/button';
 import { MealForm, MealFormData } from '@/components/stats/MealForm';
 import { MealCard } from '@/components/stats/MealCard';
 import { MacroProgress } from '@/components/stats/MacroProgress';
+import { NutritionExplanation } from '@/components/stats/NutritionExplanation';
 import { useMeals } from '@/hooks/useMeals';
-import { Plus, Utensils, Loader2 } from 'lucide-react';
+import { calculateNutritionTargets, UserStats } from '@/utils/nutritionCalculations';
+import { Plus, Utensils, Loader2, Droplets } from 'lucide-react';
 import { format } from 'date-fns';
 
 const Stats: React.FC = () => {
   const { user, profile, loading } = useAuth();
   const [showMealForm, setShowMealForm] = useState(false);
+  const [showExplanation, setShowExplanation] = useState(false);
   
   const today = format(new Date(), 'yyyy-MM-dd');
   const { meals, loading: mealsLoading, adding, addMeal, deleteMeal, totals } = useMeals(today);
 
+  // Calculate nutrition targets using the adaptive engine
+  const { targets, explanation } = useMemo(() => {
+    if (!profile) {
+      return {
+        targets: { calories: 2000, protein: 140, carbs: 200, fats: 67, fiber: 30, water_ml: 2500 },
+        explanation: null
+      };
+    }
+
+    const userStats: UserStats = {
+      age: profile.age || 30,
+      gender: (profile.gender as 'male' | 'female' | 'other') || 'male',
+      height_cm: profile.height_cm || 170,
+      current_weight_kg: profile.current_weight_kg || 70,
+      body_fat_percentage: profile.body_fat_percentage,
+      body_fat_source: profile.body_fat_source as 'user' | 'estimated' | 'AI',
+      waist_cm: profile.waist_cm,
+      training_frequency: profile.training_frequency || 3,
+      target_goal: (profile.target_goal as 'cut' | 'maintain' | 'lean_bulk') || 'maintain',
+    };
+
+    return calculateNutritionTargets(userStats);
+  }, [profile]);
+
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
   if (profile && !profile.onboarding_completed) return <Navigate to="/onboarding" replace />;
-
-  const weight = profile?.current_weight_kg || 70;
-  const maintenance = Math.round(weight * 30);
-  const cutCalories = Math.round(maintenance * 0.8);
-  const protein = Math.round(weight * 2);
-  const water = Math.round(weight * 0.035 * 1000);
-
-  // Calculate macro targets based on calorie goal
-  const targetCalories = profile?.target_goal === 'cut' ? cutCalories : maintenance;
-  const targetProtein = protein;
-  const targetCarbs = Math.round((targetCalories * 0.4) / 4); // 40% from carbs
-  const targetFats = Math.round((targetCalories * 0.25) / 9); // 25% from fats
-  const targetFiber = 30; // Standard recommendation
 
   const handleAddMeal = async (mealData: MealFormData) => {
     const success = await addMeal(mealData);
@@ -51,21 +65,26 @@ const Stats: React.FC = () => {
 
         {/* Daily Targets Cards */}
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <Card glow>
+          <Card glow className="cursor-pointer hover:border-primary/50 transition-colors" onClick={() => setShowExplanation(!showExplanation)}>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Maintenance</CardTitle>
+              <CardTitle className="text-sm flex items-center justify-between">
+                Target Calories
+                <span className="text-xs text-muted-foreground">
+                  {explanation ? (showExplanation ? '▲' : '▼ Why?') : ''}
+                </span>
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-display text-primary">{maintenance}</p>
+              <p className="text-3xl font-display text-accent">{targets.calories}</p>
               <p className="text-xs text-muted-foreground">kcal/day</p>
             </CardContent>
           </Card>
           <Card glow>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Cut Calories</CardTitle>
+              <CardTitle className="text-sm">Maintenance</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-display text-accent">{cutCalories}</p>
+              <p className="text-3xl font-display text-foreground/70">{explanation?.calories.maintenance || Math.round(targets.calories * 1.1)}</p>
               <p className="text-xs text-muted-foreground">kcal/day</p>
             </CardContent>
           </Card>
@@ -74,20 +93,32 @@ const Stats: React.FC = () => {
               <CardTitle className="text-sm">Protein Target</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-display text-success">{protein}g</p>
-              <p className="text-xs text-muted-foreground">per day</p>
+              <p className="text-3xl font-display text-success">{targets.protein}g</p>
+              <p className="text-xs text-muted-foreground">
+                {explanation?.protein.basis === 'LBM' ? 'based on lean mass' : 'per day'}
+              </p>
             </CardContent>
           </Card>
           <Card glow>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Water Target</CardTitle>
+              <CardTitle className="text-sm flex items-center gap-1">
+                <Droplets className="h-4 w-4 text-glow-blue" />
+                Water Target
+              </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-3xl font-display text-glow-blue">{water}ml</p>
+              <p className="text-3xl font-display text-glow-blue">{targets.water_ml}ml</p>
               <p className="text-xs text-muted-foreground">per day</p>
             </CardContent>
           </Card>
         </div>
+
+        {/* Explanation Panel */}
+        {showExplanation && explanation && (
+          <div className="mb-8 animate-in slide-in-from-top-2 duration-200">
+            <NutritionExplanation explanation={explanation} />
+          </div>
+        )}
 
         {/* Meal Tracking Section */}
         <div className="grid lg:grid-cols-3 gap-6">
@@ -142,11 +173,11 @@ const Stats: React.FC = () => {
             <MacroProgress
               consumed={totals}
               targets={{
-                calories: targetCalories,
-                protein: targetProtein,
-                carbs: targetCarbs,
-                fats: targetFats,
-                fiber: targetFiber,
+                calories: targets.calories,
+                protein: targets.protein,
+                carbs: targets.carbs,
+                fats: targets.fats,
+                fiber: targets.fiber,
               }}
             />
           </div>

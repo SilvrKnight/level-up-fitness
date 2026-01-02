@@ -7,8 +7,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Swords, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Swords, ChevronRight, ChevronLeft, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { estimateBodyFat, calculateLBM } from '@/utils/nutritionCalculations';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 const Onboarding: React.FC = () => {
   const { user, profile, loading, refreshProfile } = useAuth();
@@ -25,6 +32,9 @@ const Onboarding: React.FC = () => {
     training_frequency: '',
     target_goal: '',
     uses_creatine: false,
+    body_fat_method: '' as '' | 'percentage' | 'waist' | 'estimate',
+    body_fat_percentage: '',
+    waist_cm: '',
   });
 
   if (loading) {
@@ -43,9 +53,38 @@ const Onboarding: React.FC = () => {
     return <Navigate to="/habits" replace />;
   }
 
+  const calculateBodyComposition = () => {
+    const weight = parseFloat(formData.current_weight_kg) || 70;
+    const height = parseFloat(formData.height_cm) || 170;
+    const age = parseInt(formData.age) || 30;
+    const gender = (formData.gender || 'male') as 'male' | 'female' | 'other';
+
+    let bodyFat: number;
+    let bodyFatSource: 'user' | 'estimated' = 'estimated';
+
+    if (formData.body_fat_method === 'percentage' && formData.body_fat_percentage) {
+      bodyFat = parseFloat(formData.body_fat_percentage);
+      bodyFatSource = 'user';
+    } else if (formData.body_fat_method === 'waist' && formData.waist_cm) {
+      bodyFat = estimateBodyFat(gender, weight, height, age, parseFloat(formData.waist_cm));
+    } else {
+      bodyFat = estimateBodyFat(gender, weight, height, age);
+    }
+
+    const lbm = calculateLBM(weight, bodyFat);
+
+    return { bodyFat, bodyFatSource, lbm, waist_cm: parseFloat(formData.waist_cm) || null };
+  };
+
   const handleSubmit = async () => {
     setSaving(true);
     try {
+      const { bodyFat, bodyFatSource, lbm, waist_cm } = calculateBodyComposition();
+      
+      // Determine protein basis
+      const proteinBasis = bodyFat >= 25 ? 'LBM' : 'BW';
+      const proteinMultiplier = bodyFat >= 25 ? 2.1 : 1.8;
+
       const { error } = await supabase
         .from('user_profiles')
         .update({
@@ -56,6 +95,12 @@ const Onboarding: React.FC = () => {
           training_frequency: parseInt(formData.training_frequency) || null,
           target_goal: formData.target_goal || null,
           uses_creatine: formData.uses_creatine,
+          body_fat_percentage: bodyFat,
+          body_fat_source: bodyFatSource,
+          waist_cm: waist_cm,
+          lean_body_mass: lbm,
+          protein_basis: proteinBasis,
+          protein_multiplier: proteinMultiplier,
           onboarding_completed: true,
         })
         .eq('user_id', user.id);
@@ -79,8 +124,17 @@ const Onboarding: React.FC = () => {
     }
   };
 
-  const totalSteps = 3;
+  const totalSteps = 4;
   const progress = (step / totalSteps) * 100;
+
+  // Preview body composition for step 3
+  const previewComposition = () => {
+    if (!formData.current_weight_kg || !formData.height_cm) return null;
+    const { bodyFat, lbm } = calculateBodyComposition();
+    return { bodyFat: Math.round(bodyFat * 10) / 10, lbm: Math.round(lbm * 10) / 10 };
+  };
+
+  const composition = step === 3 ? previewComposition() : null;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4 relative overflow-hidden">
@@ -121,12 +175,14 @@ const Onboarding: React.FC = () => {
             <CardTitle className="font-display text-xl">
               {step === 1 && 'Basic Stats'}
               {step === 2 && 'Physical Attributes'}
-              {step === 3 && 'Training Goals'}
+              {step === 3 && 'Body Composition'}
+              {step === 4 && 'Training Goals'}
             </CardTitle>
             <CardDescription>
               {step === 1 && 'Tell us about yourself'}
               {step === 2 && 'Your current physical stats'}
-              {step === 3 && 'Define your training objectives'}
+              {step === 3 && 'Help us calculate your lean mass'}
+              {step === 4 && 'Define your training objectives'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -192,6 +248,101 @@ const Onboarding: React.FC = () => {
             )}
 
             {step === 3 && (
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Label>Body Composition Method</Label>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Info className="h-4 w-4 text-muted-foreground" />
+                        </TooltipTrigger>
+                        <TooltipContent className="max-w-xs">
+                          <p>This helps us calculate your protein needs more accurately. Higher body fat = protein based on lean mass, not total weight.</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {[
+                      { value: 'percentage', label: 'I know my body fat %' },
+                      { value: 'waist', label: 'Measure from waist' },
+                      { value: 'estimate', label: "I don't know (estimate for me)" },
+                    ].map((method) => (
+                      <button
+                        key={method.value}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, body_fat_method: method.value as any })}
+                        className={cn(
+                          "px-4 py-3 rounded-md border text-sm font-heading transition-all text-left",
+                          formData.body_fat_method === method.value
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border bg-muted text-muted-foreground hover:border-primary/50"
+                        )}
+                      >
+                        {method.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {formData.body_fat_method === 'percentage' && (
+                  <div>
+                    <Label htmlFor="bodyfat">Body Fat Percentage (%)</Label>
+                    <Input
+                      id="bodyfat"
+                      type="number"
+                      step="0.1"
+                      min="5"
+                      max="50"
+                      placeholder="e.g., 18"
+                      value={formData.body_fat_percentage}
+                      onChange={(e) => setFormData({ ...formData, body_fat_percentage: e.target.value })}
+                    />
+                  </div>
+                )}
+
+                {formData.body_fat_method === 'waist' && (
+                  <div>
+                    <Label htmlFor="waist">Waist Circumference (cm)</Label>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Measure at navel level, relaxed
+                    </p>
+                    <Input
+                      id="waist"
+                      type="number"
+                      step="0.1"
+                      placeholder="e.g., 85"
+                      value={formData.waist_cm}
+                      onChange={(e) => setFormData({ ...formData, waist_cm: e.target.value })}
+                    />
+                  </div>
+                )}
+
+                {composition && formData.body_fat_method && (
+                  <div className="p-4 rounded-lg bg-primary/5 border border-primary/20 space-y-2">
+                    <p className="text-sm font-heading text-primary">Estimated Composition</p>
+                    <div className="grid grid-cols-2 gap-4 text-center">
+                      <div>
+                        <p className="text-2xl font-display text-foreground">{composition.bodyFat}%</p>
+                        <p className="text-xs text-muted-foreground">Body Fat</p>
+                      </div>
+                      <div>
+                        <p className="text-2xl font-display text-foreground">{composition.lbm}kg</p>
+                        <p className="text-xs text-muted-foreground">Lean Mass</p>
+                      </div>
+                    </div>
+                    {composition.bodyFat >= 25 && (
+                      <p className="text-xs text-muted-foreground mt-2 text-center">
+                        ⚡ Protein will be calculated based on lean mass
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {step === 4 && (
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="frequency">Training Frequency (days/week)</Label>
