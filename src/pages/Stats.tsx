@@ -8,6 +8,7 @@ import { MealForm, MealFormData } from '@/components/stats/MealForm';
 import { MealCard } from '@/components/stats/MealCard';
 import { MacroProgress } from '@/components/stats/MacroProgress';
 import { NutritionExplanation } from '@/components/stats/NutritionExplanation';
+import { WeightTracker } from '@/components/weight/WeightTracker';
 import { useMeals } from '@/hooks/useMeals';
 import { calculateNutritionTargets, UserStats } from '@/utils/nutritionCalculations';
 import { Plus, Utensils, Loader2, Droplets } from 'lucide-react';
@@ -119,6 +120,11 @@ const Stats: React.FC = () => {
             <NutritionExplanation explanation={explanation} />
           </div>
         )}
+
+        {/* Weight Tracking Section */}
+        <div className="mb-8">
+          <WeightTracker />
+        </div>
 
         {/* Meal Tracking Section */}
         <div className="grid lg:grid-cols-3 gap-6">
