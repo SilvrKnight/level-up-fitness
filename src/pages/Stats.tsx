@@ -8,6 +8,7 @@ import { MealForm, MealFormData } from '@/components/stats/MealForm';
 import { MealCard } from '@/components/stats/MealCard';
 import { MacroProgress } from '@/components/stats/MacroProgress';
 import { NutritionExplanation } from '@/components/stats/NutritionExplanation';
+import { PerformanceRadar } from '@/components/stats/PerformanceRadar';
 import { WeightTracker } from '@/components/weight/WeightTracker';
 import { useMeals } from '@/hooks/useMeals';
 import { calculateNutritionTargets, UserStats } from '@/utils/nutritionCalculations';
@@ -174,8 +175,21 @@ const Stats: React.FC = () => {
             )}
           </div>
 
-          {/* Macro Progress Sidebar */}
-          <div>
+          {/* Performance Sidebar */}
+          <div className="space-y-6">
+            {/* PUBG-style Radar Chart */}
+            <PerformanceRadar
+              consumed={totals}
+              targets={{
+                calories: targets.calories,
+                protein: targets.protein,
+                carbs: targets.carbs,
+                fats: targets.fats,
+                fiber: targets.fiber,
+              }}
+            />
+
+            {/* Macro Progress */}
             <MacroProgress
               consumed={totals}
               targets={{
