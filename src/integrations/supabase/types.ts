@@ -38,6 +38,51 @@ export type Database = {
         }
         Relationships: []
       }
+      food_items: {
+        Row: {
+          calories_per_100g: number
+          carbs_per_100g: number
+          category: string
+          created_at: string
+          fats_per_100g: number
+          fiber_per_100g: number
+          id: string
+          name: string
+          protein_per_100g: number
+          source: string
+          updated_at: string
+          verified: boolean
+        }
+        Insert: {
+          calories_per_100g?: number
+          carbs_per_100g?: number
+          category: string
+          created_at?: string
+          fats_per_100g?: number
+          fiber_per_100g?: number
+          id?: string
+          name: string
+          protein_per_100g?: number
+          source?: string
+          updated_at?: string
+          verified?: boolean
+        }
+        Update: {
+          calories_per_100g?: number
+          carbs_per_100g?: number
+          category?: string
+          created_at?: string
+          fats_per_100g?: number
+          fiber_per_100g?: number
+          id?: string
+          name?: string
+          protein_per_100g?: number
+          source?: string
+          updated_at?: string
+          verified?: boolean
+        }
+        Relationships: []
+      }
       habit_logs: {
         Row: {
           completed: boolean | null
@@ -149,6 +194,7 @@ export type Database = {
           fats_total: number | null
           fiber_per_100g: number
           fiber_total: number | null
+          food_item_id: string | null
           grams: number
           id: string
           ingredient_name: string
@@ -156,6 +202,7 @@ export type Database = {
           meal_id: string
           protein_per_100g: number
           protein_total: number | null
+          source: string | null
         }
         Insert: {
           calories_total?: number | null
@@ -166,6 +213,7 @@ export type Database = {
           fats_total?: number | null
           fiber_per_100g?: number
           fiber_total?: number | null
+          food_item_id?: string | null
           grams: number
           id?: string
           ingredient_name: string
@@ -173,6 +221,7 @@ export type Database = {
           meal_id: string
           protein_per_100g?: number
           protein_total?: number | null
+          source?: string | null
         }
         Update: {
           calories_total?: number | null
@@ -183,6 +232,7 @@ export type Database = {
           fats_total?: number | null
           fiber_per_100g?: number
           fiber_total?: number | null
+          food_item_id?: string | null
           grams?: number
           id?: string
           ingredient_name?: string
@@ -190,8 +240,16 @@ export type Database = {
           meal_id?: string
           protein_per_100g?: number
           protein_total?: number | null
+          source?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "meal_ingredients_food_item_id_fkey"
+            columns: ["food_item_id"]
+            isOneToOne: false
+            referencedRelation: "food_items"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "meal_ingredients_meal_id_fkey"
             columns: ["meal_id"]
@@ -200,6 +258,54 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      meal_templates: {
+        Row: {
+          created_at: string
+          id: string
+          ingredients_snapshot: Json
+          is_favorite: boolean
+          last_used_at: string
+          meal_name: string
+          total_calories: number
+          total_carbs: number
+          total_fats: number
+          total_fiber: number
+          total_protein: number
+          usage_count: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          ingredients_snapshot: Json
+          is_favorite?: boolean
+          last_used_at?: string
+          meal_name: string
+          total_calories?: number
+          total_carbs?: number
+          total_fats?: number
+          total_fiber?: number
+          total_protein?: number
+          usage_count?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          ingredients_snapshot?: Json
+          is_favorite?: boolean
+          last_used_at?: string
+          meal_name?: string
+          total_calories?: number
+          total_carbs?: number
+          total_fats?: number
+          total_fiber?: number
+          total_protein?: number
+          usage_count?: number
+          user_id?: string
+        }
+        Relationships: []
       }
       meals: {
         Row: {

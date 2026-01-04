@@ -6,9 +6,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, X, Sparkles, Loader2 } from 'lucide-react';
 import { IngredientRow } from './IngredientRow';
+import { MealHistoryPanel } from './MealHistoryPanel';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Ingredient, calculateMealTotals } from '@/types/meal';
+import { FoodItem } from '@/types/food';
+import { useFoodItems } from '@/hooks/useFoodItems';
 
 interface MealFormProps {
   onSubmit: (data: MealFormData) => void;
@@ -36,6 +39,7 @@ const createEmptyIngredient = (): Ingredient => ({
 
 export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading }) => {
   const { toast } = useToast();
+  const { getFoodByName } = useFoodItems();
   
   const [mealName, setMealName] = useState('');
   const [timeConsumed, setTimeConsumed] = useState(new Date().toTimeString().slice(0, 5));
@@ -43,6 +47,7 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
   const [ingredients, setIngredients] = useState<Ingredient[]>([createEmptyIngredient()]);
   const [pasteText, setPasteText] = useState('');
   const [parsing, setParsing] = useState(false);
+  const [historyExpanded, setHistoryExpanded] = useState(false);
 
   const handleIngredientChange = (id: string, field: keyof Ingredient, value: string | number | boolean) => {
     setIngredients(prev =>
@@ -52,12 +57,54 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
     );
   };
 
+  const handleFoodSelect = (id: string, food: FoodItem | null, customName?: string) => {
+    setIngredients(prev =>
+      prev.map(ing => {
+        if (ing.id !== id) return ing;
+        
+        if (food) {
+          // Curated food selected
+          return {
+            ...ing,
+            ingredient_name: food.name,
+            protein_per_100g: food.protein_per_100g,
+            carbs_per_100g: food.carbs_per_100g,
+            fats_per_100g: food.fats_per_100g,
+            fiber_per_100g: food.fiber_per_100g,
+            is_ai_estimated: false,
+          };
+        } else {
+          // Custom food - will need AI parsing
+          return {
+            ...ing,
+            ingredient_name: customName || '',
+            protein_per_100g: 0,
+            carbs_per_100g: 0,
+            fats_per_100g: 0,
+            fiber_per_100g: 0,
+            is_ai_estimated: false,
+          };
+        }
+      })
+    );
+  };
+
   const handleAddIngredient = () => {
     setIngredients(prev => [...prev, createEmptyIngredient()]);
   };
 
   const handleRemoveIngredient = (id: string) => {
     setIngredients(prev => prev.filter(ing => ing.id !== id));
+  };
+
+  const handleSelectFromHistory = (templateMealName: string, templateIngredients: Ingredient[]) => {
+    setMealName(templateMealName);
+    setIngredients(templateIngredients);
+    setHistoryExpanded(false);
+    toast({
+      title: 'Meal loaded',
+      description: 'Adjust grams as needed before saving',
+    });
   };
 
   const handleParseIngredients = async () => {
@@ -72,38 +119,86 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
 
     setParsing(true);
     try {
-      const { data, error } = await supabase.functions.invoke('parse-ingredients', {
-        body: { text: pasteText },
-      });
+      // First, try to match against local database
+      const lines = pasteText.split('\n').filter(l => l.trim());
+      const matchedIngredients: Ingredient[] = [];
+      const unmatchedLines: string[] = [];
 
-      if (error) throw error;
+      for (const line of lines) {
+        // Try to extract weight and name
+        const match = line.match(/(\d+)\s*g?\s+(.+)|(.+?)\s+(\d+)\s*g?/i);
+        let name = line;
+        let grams = 100;
 
-      if (data?.ingredients && Array.isArray(data.ingredients)) {
-        const parsedIngredients: Ingredient[] = data.ingredients.map((ing: any) => ({
-          id: crypto.randomUUID(),
-          ingredient_name: ing.ingredient_name,
-          grams: ing.grams,
-          protein_per_100g: ing.protein_per_100g,
-          carbs_per_100g: ing.carbs_per_100g,
-          fats_per_100g: ing.fats_per_100g,
-          fiber_per_100g: ing.fiber_per_100g,
-          is_ai_estimated: true,
-        }));
-
-        // Replace empty ingredients or add to existing
-        const hasValidIngredients = ingredients.some(ing => ing.ingredient_name.trim());
-        if (hasValidIngredients) {
-          setIngredients(prev => [...prev, ...parsedIngredients]);
-        } else {
-          setIngredients(parsedIngredients);
+        if (match) {
+          if (match[1] && match[2]) {
+            grams = parseInt(match[1]);
+            name = match[2].trim();
+          } else if (match[3] && match[4]) {
+            name = match[3].trim();
+            grams = parseInt(match[4]);
+          }
         }
-        
-        setPasteText('');
-        toast({
-          title: 'Ingredients parsed',
-          description: `Added ${parsedIngredients.length} ingredients from AI`,
-        });
+
+        // Check if food exists in database
+        const food = getFoodByName(name);
+        if (food) {
+          matchedIngredients.push({
+            id: crypto.randomUUID(),
+            ingredient_name: food.name,
+            grams,
+            protein_per_100g: food.protein_per_100g,
+            carbs_per_100g: food.carbs_per_100g,
+            fats_per_100g: food.fats_per_100g,
+            fiber_per_100g: food.fiber_per_100g,
+            is_ai_estimated: false,
+          });
+        } else {
+          unmatchedLines.push(line);
+        }
       }
+
+      // If there are unmatched items, send to AI
+      let aiIngredients: Ingredient[] = [];
+      if (unmatchedLines.length > 0) {
+        const { data, error } = await supabase.functions.invoke('parse-ingredients', {
+          body: { text: unmatchedLines.join('\n') },
+        });
+
+        if (error) throw error;
+
+        if (data?.ingredients && Array.isArray(data.ingredients)) {
+          aiIngredients = data.ingredients.map((ing: any) => ({
+            id: crypto.randomUUID(),
+            ingredient_name: ing.ingredient_name,
+            grams: ing.grams,
+            protein_per_100g: ing.protein_per_100g,
+            carbs_per_100g: ing.carbs_per_100g,
+            fats_per_100g: ing.fats_per_100g,
+            fiber_per_100g: ing.fiber_per_100g,
+            is_ai_estimated: true,
+          }));
+        }
+      }
+
+      const allParsed = [...matchedIngredients, ...aiIngredients];
+
+      // Replace empty ingredients or add to existing
+      const hasValidIngredients = ingredients.some(ing => ing.ingredient_name.trim());
+      if (hasValidIngredients) {
+        setIngredients(prev => [...prev, ...allParsed]);
+      } else {
+        setIngredients(allParsed);
+      }
+      
+      setPasteText('');
+      
+      const dbCount = matchedIngredients.length;
+      const aiCount = aiIngredients.length;
+      toast({
+        title: 'Ingredients parsed',
+        description: `${dbCount} from database, ${aiCount} from AI`,
+      });
     } catch (error: any) {
       console.error('Error parsing ingredients:', error);
       toast({
@@ -142,6 +237,20 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
       return;
     }
 
+    // Check if all ingredients have macro data
+    const incompleteIngredients = validIngredients.filter(
+      ing => ing.protein_per_100g === 0 && ing.carbs_per_100g === 0 && ing.fats_per_100g === 0
+    );
+
+    if (incompleteIngredients.length > 0) {
+      toast({
+        title: 'Incomplete ingredients',
+        description: `${incompleteIngredients.length} ingredient(s) have no macro data. Select from database or use AI parser.`,
+        variant: 'destructive',
+      });
+      return;
+    }
+
     onSubmit({
       meal_name: mealName,
       time_consumed: timeConsumed,
@@ -165,6 +274,13 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Quick Add from History */}
+            <MealHistoryPanel
+              onSelectTemplate={handleSelectFromHistory}
+              isExpanded={historyExpanded}
+              onToggle={() => setHistoryExpanded(!historyExpanded)}
+            />
+
             {/* Meal Details */}
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 md:col-span-1 space-y-2">
@@ -200,14 +316,14 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
               </div>
             </div>
 
-            {/* AI Ingredient Parsing */}
-            <div className="border border-dashed border-primary/30 rounded-lg p-4 space-y-3 bg-primary/5">
-              <div className="flex items-center gap-2 text-sm font-medium text-primary">
+            {/* AI Ingredient Parsing - now a fallback */}
+            <div className="border border-dashed border-muted-foreground/30 rounded-lg p-4 space-y-3 bg-muted/20">
+              <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <Sparkles className="h-4 w-4" />
-                AI Ingredient Parser (Optional)
+                Paste Ingredients (AI fallback for unknown foods)
               </div>
               <Textarea
-                placeholder="Paste ingredients here, e.g.: 200g chicken breast, 150g cooked rice, 10g olive oil"
+                placeholder="Paste ingredients here. Database matches will be used first, AI for the rest.&#10;e.g.: 200g chicken breast, 150g cooked rice, 10g olive oil"
                 value={pasteText}
                 onChange={(e) => setPasteText(e.target.value)}
                 className="min-h-[60px] bg-background border-border text-foreground"
@@ -218,7 +334,7 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
                 size="sm"
                 onClick={handleParseIngredients}
                 disabled={parsing || !pasteText.trim()}
-                className="border-primary/50 text-primary hover:bg-primary/10"
+                className="border-muted-foreground/30 text-muted-foreground hover:bg-muted/50"
               >
                 {parsing ? (
                   <>
@@ -228,7 +344,7 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
                 ) : (
                   <>
                     <Sparkles className="h-4 w-4 mr-2" />
-                    Parse with AI
+                    Parse Ingredients
                   </>
                 )}
               </Button>
@@ -256,6 +372,7 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
                     key={ingredient.id}
                     ingredient={ingredient}
                     onChange={handleIngredientChange}
+                    onFoodSelect={handleFoodSelect}
                     onRemove={handleRemoveIngredient}
                     canRemove={ingredients.length > 1}
                   />

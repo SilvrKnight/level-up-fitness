@@ -4,10 +4,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { Ingredient, MealWithIngredients, MealIngredient, calculateMealTotals } from '@/types/meal';
 import { MealFormData } from '@/components/stats/MealForm';
+import { useMealTemplates } from './useMealTemplates';
 
 export const useMeals = (date: string) => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { saveMealAsTemplate } = useMealTemplates();
   const [meals, setMeals] = useState<MealWithIngredients[]>([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -129,6 +131,9 @@ export const useMeals = (date: string) => {
         .insert(ingredientsToInsert);
 
       if (ingredientsError) throw ingredientsError;
+
+      // Save meal as template for future reuse
+      await saveMealAsTemplate(mealData.meal_name, mealData.ingredients);
 
       toast({
         title: 'Meal Added',
