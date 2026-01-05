@@ -113,6 +113,11 @@ export const FoodSelector: React.FC<FoodSelectorProps> = ({
                 <div className="flex items-center gap-2 min-w-0">
                   <Database className="h-3.5 w-3.5 text-success shrink-0" />
                   <span className="font-medium truncate">{food.name}</span>
+                  {food.measurement_type === 'unit_based' && food.grams_per_unit && (
+                    <span className="text-xs text-muted-foreground">
+                      ({food.grams_per_unit}g/unit)
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
                   <span>{food.calories_per_100g} cal</span>

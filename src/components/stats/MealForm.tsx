@@ -63,7 +63,7 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
         if (ing.id !== id) return ing;
         
         if (food) {
-          // Curated food selected
+          // Curated food selected - include measurement info
           return {
             ...ing,
             ingredient_name: food.name,
@@ -72,9 +72,15 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
             fats_per_100g: food.fats_per_100g,
             fiber_per_100g: food.fiber_per_100g,
             is_ai_estimated: false,
+            measurement_type: food.measurement_type,
+            grams_per_unit: food.grams_per_unit,
+            unit_count: food.measurement_type === 'unit_based' ? 1 : undefined,
+            grams: food.measurement_type === 'unit_based' && food.grams_per_unit 
+              ? food.grams_per_unit 
+              : ing.grams || 0,
           };
         } else {
-          // Custom food - will need AI parsing
+          // Custom food - will need AI parsing (weight-based by default)
           return {
             ...ing,
             ingredient_name: customName || '',
@@ -83,6 +89,9 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
             fats_per_100g: 0,
             fiber_per_100g: 0,
             is_ai_estimated: false,
+            measurement_type: 'weight_based' as const,
+            grams_per_unit: null,
+            unit_count: undefined,
           };
         }
       })
@@ -143,15 +152,19 @@ export const MealForm: React.FC<MealFormProps> = ({ onSubmit, onCancel, loading 
         // Check if food exists in database
         const food = getFoodByName(name);
         if (food) {
+          const isUnitBased = food.measurement_type === 'unit_based' && food.grams_per_unit;
           matchedIngredients.push({
             id: crypto.randomUUID(),
             ingredient_name: food.name,
-            grams,
+            grams: isUnitBased ? Math.round(grams / food.grams_per_unit!) * food.grams_per_unit! : grams,
             protein_per_100g: food.protein_per_100g,
             carbs_per_100g: food.carbs_per_100g,
             fats_per_100g: food.fats_per_100g,
             fiber_per_100g: food.fiber_per_100g,
             is_ai_estimated: false,
+            measurement_type: food.measurement_type,
+            grams_per_unit: food.grams_per_unit,
+            unit_count: isUnitBased ? Math.round(grams / food.grams_per_unit!) : undefined,
           });
         } else {
           unmatchedLines.push(line);
