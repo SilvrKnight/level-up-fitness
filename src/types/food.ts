@@ -9,6 +9,8 @@ export interface FoodItem {
   calories_per_100g: number;
   verified: boolean;
   source: 'internal' | 'ai_estimated';
+  measurement_type: 'unit_based' | 'weight_based' | 'hybrid';
+  grams_per_unit: number | null;
 }
 
 export interface MealTemplate {

@@ -7,6 +7,10 @@ export interface Ingredient {
   fats_per_100g: number;
   fiber_per_100g: number;
   is_ai_estimated: boolean;
+  // Unit-based tracking support
+  measurement_type?: 'unit_based' | 'weight_based' | 'hybrid';
+  grams_per_unit?: number | null;
+  unit_count?: number; // For unit-based foods (e.g., 2 eggs)
 }
 
 export interface IngredientTotals {

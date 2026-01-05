@@ -46,7 +46,9 @@ export type Database = {
           created_at: string
           fats_per_100g: number
           fiber_per_100g: number
+          grams_per_unit: number | null
           id: string
+          measurement_type: string
           name: string
           protein_per_100g: number
           source: string
@@ -60,7 +62,9 @@ export type Database = {
           created_at?: string
           fats_per_100g?: number
           fiber_per_100g?: number
+          grams_per_unit?: number | null
           id?: string
+          measurement_type?: string
           name: string
           protein_per_100g?: number
           source?: string
@@ -74,7 +78,9 @@ export type Database = {
           created_at?: string
           fats_per_100g?: number
           fiber_per_100g?: number
+          grams_per_unit?: number | null
           id?: string
+          measurement_type?: string
           name?: string
           protein_per_100g?: number
           source?: string
