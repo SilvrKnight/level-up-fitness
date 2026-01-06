@@ -155,6 +155,8 @@ export type Database = {
           energy_level: number | null
           entry_date: string
           id: string
+          plan_deviation_reason: string | null
+          plan_followed: boolean | null
           tomorrow_goal: string | null
           updated_at: string | null
           user_id: string
@@ -168,6 +170,8 @@ export type Database = {
           energy_level?: number | null
           entry_date?: string
           id?: string
+          plan_deviation_reason?: string | null
+          plan_followed?: boolean | null
           tomorrow_goal?: string | null
           updated_at?: string | null
           user_id: string
@@ -181,6 +185,8 @@ export type Database = {
           energy_level?: number | null
           entry_date?: string
           id?: string
+          plan_deviation_reason?: string | null
+          plan_followed?: boolean | null
           tomorrow_goal?: string | null
           updated_at?: string | null
           user_id?: string
