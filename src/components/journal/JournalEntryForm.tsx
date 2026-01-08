@@ -1,17 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { format } from 'date-fns';
 import { z } from 'zod';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Switch } from '@/components/ui/switch';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { CalendarIcon, Info, Save, Loader2 } from 'lucide-react';
+import { CalendarIcon, Loader2 } from 'lucide-react';
 import { useJournalEntry } from '@/hooks/useJournalEntries';
 import { JournalEntryFormData, EMPTY_JOURNAL_FORM } from '@/types/journal';
 import { cn } from '@/lib/utils';
@@ -40,16 +34,73 @@ interface JournalEntryFormProps {
   onSaved?: () => void;
 }
 
+interface WritingSectionProps {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  maxLength: number;
+  hasError?: boolean;
+  rows?: number;
+}
+
+const WritingSection: React.FC<WritingSectionProps> = ({
+  value,
+  onChange,
+  placeholder,
+  maxLength,
+  hasError,
+  rows = 3,
+}) => {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const adjustHeight = () => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.max(textarea.scrollHeight, rows * 24)}px`;
+    }
+  };
+
+  useEffect(() => {
+    adjustHeight();
+  }, [value]);
+
+  return (
+    <div className={cn(
+      "relative pl-4 border-l-2 transition-colors duration-300",
+      hasError ? "border-destructive/60" : "border-primary/20"
+    )}>
+      <textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        maxLength={maxLength}
+        className={cn(
+          "w-full bg-transparent border-none outline-none resize-none",
+          "text-foreground placeholder:text-muted-foreground/50",
+          "text-sm leading-relaxed py-2",
+          "focus:placeholder:text-muted-foreground/30"
+        )}
+        style={{ minHeight: `${rows * 24}px` }}
+      />
+      <div className="absolute bottom-1 right-0 text-[10px] text-muted-foreground/40">
+        {value.length}/{maxLength}
+      </div>
+    </div>
+  );
+};
+
 export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({ onSaved }) => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [formData, setFormData] = useState<JournalEntryFormData>(EMPTY_JOURNAL_FORM);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [showErrors, setShowErrors] = useState(false);
   
   const { entry, loading, saving, lastSaved, saveEntry } = useJournalEntry(selectedDate);
   const { toast } = useToast();
+  const firstErrorRef = useRef<HTMLDivElement>(null);
 
-  // Load entry data when date changes or entry loads
   useEffect(() => {
     if (entry) {
       setFormData({
@@ -62,18 +113,17 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({ onSaved }) =
         tomorrow_goal: entry.tomorrow_goal ?? '',
         additional_notes: entry.additional_notes ?? '',
       });
-      setTouched({});
+      setShowErrors(false);
       setErrors({});
     } else if (!loading) {
       setFormData(EMPTY_JOURNAL_FORM);
-      setTouched({});
+      setShowErrors(false);
       setErrors({});
     }
   }, [entry, loading]);
 
   const updateField = (field: keyof JournalEntryFormData, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    setTouched(prev => ({ ...prev, [field]: true }));
   };
 
   const validateForm = (): boolean => {
@@ -85,6 +135,7 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({ onSaved }) =
         newErrors[path] = err.message;
       });
       setErrors(newErrors);
+      setShowErrors(true);
       return false;
     }
     setErrors({});
@@ -99,44 +150,58 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({ onSaved }) =
   const handleSave = async () => {
     if (!validateForm()) {
       toast({
-        title: 'Validation Error',
-        description: 'Please fix the errors before saving',
+        title: 'Missing Fields',
+        description: 'Complete all required sections before saving',
         variant: 'destructive',
       });
+      // Scroll to first error
+      setTimeout(() => {
+        firstErrorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 100);
       return;
     }
 
     const success = await saveEntry(formData);
     if (success) {
       toast({
-        title: 'Entry Saved',
-        description: `Journal entry for ${format(selectedDate, 'MMM d, yyyy')} saved`,
+        title: 'Saved',
+        description: format(selectedDate, 'MMM d, yyyy'),
       });
       onSaved?.();
     } else {
       toast({
         title: 'Save Failed',
-        description: 'Could not save journal entry. Try again.',
+        description: 'Could not save entry. Try again.',
         variant: 'destructive',
       });
     }
   };
 
-  const getFieldError = (field: string) => {
-    return touched[field] ? errors[field] : undefined;
-  };
+  const hasError = (field: string) => showErrors && errors[field];
+  const firstErrorField = Object.keys(errors)[0];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
-    <Card glow className="w-full">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-        <CardTitle className="text-xl font-semibold">Daily Journal</CardTitle>
+    <div className="max-w-2xl mx-auto">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <h1 className="font-display text-2xl font-semibold text-foreground tracking-wide">
+          Daily Journal
+        </h1>
         <div className="flex items-center gap-4">
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
-                <CalendarIcon className="h-4 w-4" />
-                {format(selectedDate, 'MMM d, yyyy')}
-              </Button>
+              <button className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 hover:bg-muted transition-colors text-sm">
+                <CalendarIcon className="h-3.5 w-3.5 text-primary" />
+                <span>{format(selectedDate, 'MMM d, yyyy')}</span>
+              </button>
             </PopoverTrigger>
             <PopoverContent className="w-auto p-0" align="end">
               <Calendar
@@ -148,209 +213,186 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({ onSaved }) =
               />
             </PopoverContent>
           </Popover>
-          <div className="text-xs text-muted-foreground">
+          <span className="text-xs text-muted-foreground">
             {lastSaved ? `Saved ${format(lastSaved, 'HH:mm')}` : 'Not saved'}
+          </span>
+        </div>
+      </div>
+
+      {/* Canvas */}
+      <div className="space-y-8 bg-card/30 rounded-xl p-6 border border-border/50">
+        
+        {/* Energy Level - Inline segmented control */}
+        <div 
+          ref={firstErrorField === 'energy_level' ? firstErrorRef : null}
+          className="space-y-2"
+        >
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-muted-foreground">Energy</span>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4, 5].map((level) => (
+                <button
+                  key={level}
+                  onClick={() => updateField('energy_level', level)}
+                  className={cn(
+                    "w-9 h-9 rounded-lg text-sm font-medium transition-all duration-200",
+                    formData.energy_level === level
+                      ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30"
+                      : "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+                    hasError('energy_level') && formData.energy_level === 0 && "ring-1 ring-destructive/50"
+                  )}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+          </div>
+          <p className="text-[10px] text-muted-foreground/60 pl-0">
+            Correlated with calories, protein, and weight data
+          </p>
+        </div>
+
+        {/* Divider */}
+        <div className="h-px bg-border/30" />
+
+        {/* Plan Followed - Inline toggle */}
+        <div 
+          ref={firstErrorField === 'plan_deviation_reason' ? firstErrorRef : null}
+          className="space-y-3"
+        >
+          <div className="flex items-center gap-3">
+            <Switch
+              checked={formData.plan_followed}
+              onCheckedChange={(checked) => updateField('plan_followed', checked)}
+              className="data-[state=checked]:bg-success"
+            />
+            <span className={cn(
+              "text-sm transition-colors",
+              formData.plan_followed ? "text-foreground" : "text-muted-foreground"
+            )}>
+              Plan followed today
+            </span>
+          </div>
+          
+          {/* Deviation reason - fades in */}
+          <div className={cn(
+            "overflow-hidden transition-all duration-300",
+            !formData.plan_followed ? "max-h-32 opacity-100" : "max-h-0 opacity-0"
+          )}>
+            <div className={cn(
+              "pl-4 border-l-2 transition-colors",
+              hasError('plan_deviation_reason') ? "border-destructive/60" : "border-warning/30"
+            )}>
+              <textarea
+                value={formData.plan_deviation_reason}
+                onChange={(e) => updateField('plan_deviation_reason', e.target.value)}
+                placeholder="What broke the plan?"
+                className="w-full bg-transparent border-none outline-none resize-none text-sm text-foreground placeholder:text-muted-foreground/50 py-2 leading-relaxed"
+                rows={2}
+              />
+            </div>
           </div>
         </div>
-      </CardHeader>
-      
-      <CardContent className="space-y-6">
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+
+        {/* Divider */}
+        <div className="h-px bg-border/30" />
+
+        {/* What Worked */}
+        <div ref={firstErrorField === 'what_went_well' ? firstErrorRef : null}>
+          <p className="text-xs text-muted-foreground/70 mb-2">What worked today</p>
+          <WritingSection
+            value={formData.what_went_well}
+            onChange={(v) => updateField('what_went_well', v)}
+            placeholder="Describe specific actions or decisions that produced results..."
+            maxLength={500}
+            hasError={!!hasError('what_went_well')}
+          />
+        </div>
+
+        {/* What Failed */}
+        <div ref={firstErrorField === 'what_was_difficult' ? firstErrorRef : null}>
+          <p className="text-xs text-muted-foreground/70 mb-2">What failed / caused friction</p>
+          <WritingSection
+            value={formData.what_was_difficult}
+            onChange={(v) => updateField('what_was_difficult', v)}
+            placeholder="Identify concrete causes: time, hunger, stress, poor planning..."
+            maxLength={500}
+            hasError={!!hasError('what_was_difficult')}
+          />
+        </div>
+
+        {/* Lessons */}
+        <div ref={firstErrorField === 'what_i_learned' ? firstErrorRef : null}>
+          <p className="text-xs text-muted-foreground/70 mb-2">Lessons</p>
+          <WritingSection
+            value={formData.what_i_learned}
+            onChange={(v) => updateField('what_i_learned', v)}
+            placeholder="State insights as actionable learnings, not complaints..."
+            maxLength={500}
+            hasError={!!hasError('what_i_learned')}
+          />
+        </div>
+
+        {/* Divider */}
+        <div className="h-px bg-border/30" />
+
+        {/* Tomorrow's Priority - emphasized single line */}
+        <div ref={firstErrorField === 'tomorrow_goal' ? firstErrorRef : null}>
+          <p className="text-xs text-primary/80 mb-2 font-medium">Tomorrow's priority</p>
+          <div className={cn(
+            "relative pl-4 border-l-2 transition-colors",
+            hasError('tomorrow_goal') ? "border-destructive/60" : "border-primary/40"
+          )}>
+            <input
+              type="text"
+              value={formData.tomorrow_goal}
+              onChange={(e) => {
+                const val = e.target.value.replace(/[\r\n]/g, '');
+                updateField('tomorrow_goal', val);
+              }}
+              placeholder="One single action to focus on tomorrow"
+              maxLength={255}
+              className="w-full bg-transparent border-none outline-none text-foreground text-base font-medium placeholder:text-muted-foreground/50 placeholder:font-normal py-2"
+            />
+            <div className="absolute bottom-1 right-0 text-[10px] text-muted-foreground/40">
+              {formData.tomorrow_goal.length}/255
+            </div>
           </div>
-        ) : (
-          <>
-            {/* Section 1: Energy Level */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Label className="text-sm font-medium">Energy Level</Label>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-xs">
-                    <p>Used for correlation with calories, protein, sleep, and weight trend analysis.</p>
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-              <RadioGroup
-                value={formData.energy_level.toString()}
-                onValueChange={(val) => updateField('energy_level', parseInt(val))}
-                className="flex gap-2"
-              >
-                {[1, 2, 3, 4, 5].map((level) => (
-                  <div key={level} className="flex items-center">
-                    <RadioGroupItem
-                      value={level.toString()}
-                      id={`energy-${level}`}
-                      className="sr-only"
-                    />
-                    <Label
-                      htmlFor={`energy-${level}`}
-                      className={cn(
-                        "flex items-center justify-center w-10 h-10 rounded-md border cursor-pointer transition-colors",
-                        formData.energy_level === level
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-muted hover:bg-muted/80 border-border"
-                      )}
-                    >
-                      {level}
-                    </Label>
-                  </div>
-                ))}
-              </RadioGroup>
-              {getFieldError('energy_level') && (
-                <p className="text-xs text-destructive">{getFieldError('energy_level')}</p>
-              )}
-            </div>
+        </div>
 
-            {/* Section 2: Plan Adherence */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Plan Followed Today</Label>
-                <Switch
-                  checked={formData.plan_followed}
-                  onCheckedChange={(checked) => updateField('plan_followed', checked)}
-                />
-              </div>
-              {!formData.plan_followed && (
-                <div className="space-y-2">
-                  <Label className="text-xs text-muted-foreground">Why was the plan not followed?</Label>
-                  <Textarea
-                    value={formData.plan_deviation_reason}
-                    onChange={(e) => updateField('plan_deviation_reason', e.target.value)}
-                    placeholder="Describe what prevented adherence (1-2 sentences)"
-                    className="resize-none"
-                    rows={2}
-                  />
-                  {getFieldError('plan_deviation_reason') && (
-                    <p className="text-xs text-destructive">{getFieldError('plan_deviation_reason')}</p>
-                  )}
-                </div>
-              )}
-            </div>
+        {/* Additional Notes - lighter emphasis */}
+        <div className="pt-2">
+          <p className="text-xs text-muted-foreground/50 mb-2">Additional notes</p>
+          <div className="pl-4 border-l-2 border-muted/30">
+            <textarea
+              value={formData.additional_notes}
+              onChange={(e) => updateField('additional_notes', e.target.value)}
+              placeholder="Any other observations..."
+              maxLength={1000}
+              className="w-full bg-transparent border-none outline-none resize-none text-sm text-muted-foreground placeholder:text-muted-foreground/30 py-2 leading-relaxed"
+              rows={2}
+            />
+          </div>
+        </div>
+      </div>
 
-            {/* Section 3: What Worked */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">What Worked</Label>
-              <Textarea
-                value={formData.what_went_well}
-                onChange={(e) => updateField('what_went_well', e.target.value)}
-                placeholder="Describe specific actions or decisions that produced results"
-                className="resize-none"
-                rows={3}
-                maxLength={500}
-              />
-              <div className="flex justify-between">
-                {getFieldError('what_went_well') && (
-                  <p className="text-xs text-destructive">{getFieldError('what_went_well')}</p>
-                )}
-                <span className="text-xs text-muted-foreground ml-auto">
-                  {formData.what_went_well.length}/500
-                </span>
-              </div>
-            </div>
-
-            {/* Section 4: What Failed */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">What Failed / Caused Friction</Label>
-              <Textarea
-                value={formData.what_was_difficult}
-                onChange={(e) => updateField('what_was_difficult', e.target.value)}
-                placeholder="Identify concrete causes: time constraints, hunger, stress, poor planning"
-                className="resize-none"
-                rows={3}
-                maxLength={500}
-              />
-              <div className="flex justify-between">
-                {getFieldError('what_was_difficult') && (
-                  <p className="text-xs text-destructive">{getFieldError('what_was_difficult')}</p>
-                )}
-                <span className="text-xs text-muted-foreground ml-auto">
-                  {formData.what_was_difficult.length}/500
-                </span>
-              </div>
-            </div>
-
-            {/* Section 5: Lessons */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Lessons</Label>
-              <Textarea
-                value={formData.what_i_learned}
-                onChange={(e) => updateField('what_i_learned', e.target.value)}
-                placeholder="State insights as actionable learnings, not complaints"
-                className="resize-none"
-                rows={3}
-                maxLength={500}
-              />
-              <div className="flex justify-between">
-                {getFieldError('what_i_learned') && (
-                  <p className="text-xs text-destructive">{getFieldError('what_i_learned')}</p>
-                )}
-                <span className="text-xs text-muted-foreground ml-auto">
-                  {formData.what_i_learned.length}/500
-                </span>
-              </div>
-            </div>
-
-            {/* Section 6: Tomorrow's Priority */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Tomorrow's Priority</Label>
-              <Input
-                value={formData.tomorrow_goal}
-                onChange={(e) => {
-                  // Reject multi-line content
-                  const val = e.target.value.replace(/[\r\n]/g, '');
-                  updateField('tomorrow_goal', val);
-                }}
-                placeholder="One single action to focus on tomorrow"
-                maxLength={255}
-              />
-              <div className="flex justify-between">
-                {getFieldError('tomorrow_goal') && (
-                  <p className="text-xs text-destructive">{getFieldError('tomorrow_goal')}</p>
-                )}
-                <span className="text-xs text-muted-foreground ml-auto">
-                  {formData.tomorrow_goal.length}/255
-                </span>
-              </div>
-            </div>
-
-            {/* Section 7: Additional Notes */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium text-muted-foreground">Additional Notes (Optional)</Label>
-              <Textarea
-                value={formData.additional_notes}
-                onChange={(e) => updateField('additional_notes', e.target.value)}
-                placeholder="Any other observations"
-                className="resize-none"
-                rows={2}
-                maxLength={1000}
-              />
-              <span className="text-xs text-muted-foreground">
-                {formData.additional_notes.length}/1000
-              </span>
-            </div>
-
-            {/* Save Button */}
-            <div className="pt-4 border-t border-border">
-              <Button
-                onClick={handleSave}
-                disabled={!isFormValid || saving}
-                className="w-full gap-2"
-              >
-                {saving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                Save Entry
-              </Button>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
+      {/* Save Button - outside canvas */}
+      <div className="mt-6 flex justify-end">
+        <Button
+          onClick={handleSave}
+          disabled={saving}
+          className={cn(
+            "px-6 transition-all",
+            !isFormValid && "opacity-70"
+          )}
+        >
+          {saving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            'Save Entry'
+          )}
+        </Button>
+      </div>
+    </div>
   );
 };
