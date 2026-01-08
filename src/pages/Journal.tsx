@@ -5,7 +5,7 @@ import { Layout } from '@/components/layout/Layout';
 import { JournalEntryForm } from '@/components/journal/JournalEntryForm';
 import { JournalEntryList } from '@/components/journal/JournalEntryList';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, History } from 'lucide-react';
+
 
 const Journal: React.FC = () => {
   const { user, profile, loading } = useAuth();
@@ -23,26 +23,31 @@ const Journal: React.FC = () => {
 
   return (
     <Layout>
-      <div className="container mx-auto px-4 py-8 max-w-4xl">
-        <h1 className="font-display text-3xl font-bold text-foreground glow-text-cyan mb-8">Journal</h1>
-        
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 max-w-xs">
-            <TabsTrigger value="entry" className="gap-2">
-              <FileText className="h-4 w-4" />
-              Entry
-            </TabsTrigger>
-            <TabsTrigger value="history" className="gap-2">
-              <History className="h-4 w-4" />
-              History
-            </TabsTrigger>
-          </TabsList>
+      <div className="container mx-auto px-4 py-8">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          {/* Minimal tab switcher */}
+          <div className="max-w-2xl mx-auto mb-6">
+            <TabsList className="bg-transparent border-b border-border/30 rounded-none w-full justify-start gap-6 p-0 h-auto">
+              <TabsTrigger 
+                value="entry" 
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent bg-transparent px-0 pb-2 text-sm"
+              >
+                Entry
+              </TabsTrigger>
+              <TabsTrigger 
+                value="history" 
+                className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent bg-transparent px-0 pb-2 text-sm"
+              >
+                History
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-          <TabsContent value="entry" className="mt-6">
+          <TabsContent value="entry" className="mt-0">
             <JournalEntryForm onSaved={handleEntrySaved} />
           </TabsContent>
 
-          <TabsContent value="history" className="mt-6">
+          <TabsContent value="history" className="mt-0">
             <JournalEntryList key={listKey} />
           </TabsContent>
         </Tabs>
