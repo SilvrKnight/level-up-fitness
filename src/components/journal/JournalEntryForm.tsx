@@ -3,7 +3,7 @@ import { format } from 'date-fns';
 import { z } from 'zod';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, Loader2, Check } from 'lucide-react';
+import { CalendarIcon, Loader2 } from 'lucide-react';
 import { useJournalEntry } from '@/hooks/useJournalEntries';
 import { JournalEntryFormData, EMPTY_JOURNAL_FORM } from '@/types/journal';
 import { cn } from '@/lib/utils';
@@ -33,7 +33,17 @@ interface JournalEntryFormProps {
 }
 
 // Line height for the ruled paper effect - matches textarea line-height
-const LINE_HEIGHT = 28;
+const LINE_HEIGHT = 32;
+
+// Paper ink colors
+const INK = {
+  primary: '#1a1a1a',
+  secondary: '#3d3d3d',
+  placeholder: '#9a9a9a',
+  muted: '#6b6b6b',
+  error: '#8b3a3a',
+  accent: '#2c4a7c',
+};
 
 interface LinedTextAreaProps {
   value: string;
@@ -54,11 +64,11 @@ const LinedTextArea: React.FC<LinedTextAreaProps> = ({
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [rows, setRows] = useState(minRows);
+  const [isFocused, setIsFocused] = useState(false);
 
   const adjustHeight = () => {
     const textarea = textareaRef.current;
     if (textarea) {
-      // Calculate rows based on content
       const lineCount = (value.match(/\n/g) || []).length + 1;
       const contentRows = Math.max(lineCount, Math.ceil(textarea.scrollHeight / LINE_HEIGHT));
       setRows(Math.max(minRows, contentRows));
@@ -69,25 +79,50 @@ const LinedTextArea: React.FC<LinedTextAreaProps> = ({
     adjustHeight();
   }, [value]);
 
+  // Hide placeholder when focused or has value
+  const showPlaceholder = !isFocused && !value;
+
   return (
     <div className="relative">
+      {/* Placeholder as separate element to prevent ghost text */}
+      {showPlaceholder && (
+        <div 
+          className="absolute pointer-events-none select-none"
+          style={{
+            color: INK.placeholder,
+            fontFamily: "'Source Serif 4', Georgia, serif",
+            fontSize: '16px',
+            lineHeight: `${LINE_HEIGHT}px`,
+            paddingTop: '2px',
+            fontStyle: 'italic',
+          }}
+        >
+          {placeholder}
+        </div>
+      )}
       <textarea
         ref={textareaRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
+        onFocus={() => setIsFocused(true)}
+        onBlur={() => setIsFocused(false)}
         maxLength={maxLength}
         rows={rows}
+        spellCheck={false}
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
         className={cn(
           "w-full bg-transparent border-none outline-none resize-none",
-          "text-foreground placeholder:text-muted-foreground/30",
-          "font-body text-[15px] leading-[28px]",
-          "focus:placeholder:opacity-0 transition-all",
-          hasError && "text-destructive/80"
+          "transition-all duration-150"
         )}
         style={{ 
+          color: hasError ? INK.error : INK.primary,
+          fontFamily: "'Source Serif 4', Georgia, serif",
+          fontSize: '16px',
           lineHeight: `${LINE_HEIGHT}px`,
-          paddingTop: '4px',
+          paddingTop: '2px',
+          caretColor: INK.accent,
         }}
       />
     </div>
@@ -196,20 +231,21 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({ onSaved }) =
       {/* Paper Surface */}
       <div 
         ref={paperRef}
-        className="relative bg-[hsl(45,30%,96%)] rounded-sm overflow-hidden"
+        className="relative rounded-sm overflow-hidden"
         style={{
+          backgroundColor: '#f8f6f1',
           boxShadow: `
-            0 1px 3px rgba(0,0,0,0.12),
-            0 4px 12px rgba(0,0,0,0.08),
-            0 12px 40px rgba(0,0,0,0.12),
-            inset 0 0 80px rgba(0,0,0,0.03)
+            0 1px 3px rgba(0,0,0,0.10),
+            0 4px 12px rgba(0,0,0,0.06),
+            0 12px 40px rgba(0,0,0,0.10),
+            inset 0 0 60px rgba(0,0,0,0.02)
           `,
         }}
       >
         {/* Red margin line */}
         <div 
-          className="absolute top-0 bottom-0 w-px bg-[hsl(0,50%,75%)]" 
-          style={{ left: '72px' }}
+          className="absolute top-0 bottom-0 w-px" 
+          style={{ left: '60px', backgroundColor: 'rgba(180,100,100,0.35)' }}
         />
         
         {/* Ruled lines background */}
@@ -220,30 +256,44 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({ onSaved }) =
               to bottom,
               transparent,
               transparent ${LINE_HEIGHT - 1}px,
-              hsl(210 20% 85%) ${LINE_HEIGHT - 1}px,
-              hsl(210 20% 85%) ${LINE_HEIGHT}px
+              rgba(180,190,200,0.3) ${LINE_HEIGHT - 1}px,
+              rgba(180,190,200,0.3) ${LINE_HEIGHT}px
             )`,
-            backgroundPosition: `0 ${LINE_HEIGHT + 8}px`,
+            backgroundPosition: `0 ${LINE_HEIGHT + 12}px`,
           }}
         />
 
         {/* Content area with left margin */}
-        <div className="relative pl-20 pr-8 py-6">
+        <div className="relative pl-16 pr-8 py-6">
           
           {/* Header Row */}
           <div 
-            className="flex items-baseline justify-between mb-2"
+            className="flex items-baseline justify-between mb-1"
             style={{ height: `${LINE_HEIGHT}px`, lineHeight: `${LINE_HEIGHT}px` }}
           >
-            <h1 className="text-[hsl(220,15%,25%)] font-medium text-lg tracking-wide">
+            <h1 
+              className="font-medium text-lg tracking-wide"
+              style={{ 
+                color: INK.primary,
+                fontFamily: "'Source Serif 4', Georgia, serif",
+              }}
+            >
               Daily Journal
             </h1>
             <div className="flex items-center gap-4">
               <Popover>
                 <PopoverTrigger asChild>
-                  <button className="flex items-center gap-1.5 text-[hsl(220,15%,40%)] hover:text-[hsl(220,15%,25%)] transition-colors text-sm">
+                  <button 
+                    className="flex items-center gap-1.5 transition-colors text-sm hover:opacity-70"
+                    style={{ color: INK.muted }}
+                  >
                     <CalendarIcon className="h-3.5 w-3.5" />
-                    <span className="font-medium">{format(selectedDate, 'EEEE, MMM d')}</span>
+                    <span 
+                      className="font-medium"
+                      style={{ fontFamily: "'Source Serif 4', Georgia, serif" }}
+                    >
+                      {format(selectedDate, 'EEEE, MMM d')}
+                    </span>
                   </button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0 bg-popover" align="end">
@@ -259,52 +309,97 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({ onSaved }) =
             </div>
           </div>
 
-          {/* Save status & button in margin area */}
-          <div className="absolute top-6 left-3 flex flex-col items-center gap-2 text-[10px] text-[hsl(220,10%,55%)]">
-            <span className="writing-mode-vertical">
-              {lastSaved ? format(lastSaved, 'HH:mm') : '—'}
-            </span>
-          </div>
-
-          {/* Margin annotations: Energy & Plan */}
-          <div className="absolute left-2 flex flex-col gap-1" style={{ top: `${LINE_HEIGHT * 2 + 24}px` }}>
-            {/* Energy Level - tiny margin notation */}
-            <div className="flex flex-col items-center gap-0.5">
-              <span className="text-[9px] text-[hsl(220,10%,50%)] uppercase tracking-wider">E</span>
-              <div className="flex flex-col gap-0.5">
+          {/* Margin annotations: Energy & Plan - handwritten style */}
+          <div 
+            className="absolute flex flex-col gap-4" 
+            style={{ left: '10px', top: `${LINE_HEIGHT * 2 + 20}px` }}
+          >
+            {/* Energy Level - pencil-style notation */}
+            <div className="flex flex-col items-center gap-1">
+              <span 
+                className="uppercase tracking-widest"
+                style={{ 
+                  fontSize: '8px', 
+                  color: INK.placeholder,
+                  fontFamily: "'Source Serif 4', Georgia, serif",
+                }}
+              >
+                energy
+              </span>
+              <div className="flex flex-col gap-px">
                 {[5, 4, 3, 2, 1].map((level) => (
                   <button
                     key={level}
                     onClick={() => updateField('energy_level', level)}
-                    className={cn(
-                      "w-4 h-4 rounded-full text-[9px] font-medium transition-all duration-150",
-                      formData.energy_level === level
-                        ? "bg-[hsl(220,60%,50%)] text-white"
-                        : "bg-[hsl(220,15%,88%)] text-[hsl(220,10%,45%)] hover:bg-[hsl(220,20%,80%)]",
-                      hasError('energy_level') && formData.energy_level === 0 && "ring-1 ring-[hsl(0,60%,55%)]"
-                    )}
+                    className="transition-all duration-100"
+                    style={{
+                      width: '18px',
+                      height: '14px',
+                      fontSize: '10px',
+                      fontFamily: "'Source Serif 4', Georgia, serif",
+                      color: formData.energy_level === level ? INK.primary : INK.placeholder,
+                      fontWeight: formData.energy_level === level ? 600 : 400,
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      opacity: formData.energy_level === level ? 1 : 0.5,
+                    }}
                   >
                     {level}
                   </button>
                 ))}
               </div>
+              {hasError('energy_level') && formData.energy_level === 0 && (
+                <div 
+                  className="w-1 h-1 rounded-full"
+                  style={{ backgroundColor: INK.error }}
+                />
+              )}
             </div>
             
-            {/* Plan Followed - tiny checkbox in margin */}
-            <div className="flex flex-col items-center gap-0.5 mt-3">
-              <span className="text-[9px] text-[hsl(220,10%,50%)] uppercase tracking-wider">P</span>
+            {/* Plan Followed - pencil mark style */}
+            <div className="flex flex-col items-center gap-1">
+              <span 
+                className="uppercase tracking-widest"
+                style={{ 
+                  fontSize: '8px', 
+                  color: INK.placeholder,
+                  fontFamily: "'Source Serif 4', Georgia, serif",
+                }}
+              >
+                plan
+              </span>
               <button
                 onClick={() => updateField('plan_followed', !formData.plan_followed)}
-                className={cn(
-                  "w-4 h-4 rounded border transition-all flex items-center justify-center",
-                  formData.plan_followed 
-                    ? "bg-[hsl(145,50%,40%)] border-[hsl(145,50%,35%)]" 
-                    : "bg-[hsl(220,15%,92%)] border-[hsl(220,15%,75%)]"
-                )}
+                className="transition-all duration-100"
+                style={{
+                  width: '18px',
+                  height: '18px',
+                  fontSize: '14px',
+                  fontFamily: "'Source Serif 4', Georgia, serif",
+                  color: formData.plan_followed ? INK.secondary : INK.placeholder,
+                  background: 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                }}
               >
-                {formData.plan_followed && <Check className="h-2.5 w-2.5 text-white" />}
+                {formData.plan_followed ? '✓' : '—'}
               </button>
             </div>
+          </div>
+
+          {/* Save status in top margin */}
+          <div 
+            className="absolute text-right"
+            style={{ 
+              top: '12px', 
+              left: '12px',
+              fontSize: '9px',
+              color: INK.placeholder,
+              fontFamily: "'Source Serif 4', Georgia, serif",
+            }}
+          >
+            {lastSaved ? format(lastSaved, 'HH:mm') : ''}
           </div>
 
           {/* Writing Content - flows naturally with lines */}
@@ -313,24 +408,30 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({ onSaved }) =
             {/* Plan deviation reason - appears if plan not followed */}
             <div className={cn(
               "overflow-hidden transition-all duration-300",
-              !formData.plan_followed ? "max-h-[84px] opacity-100" : "max-h-0 opacity-0"
+              !formData.plan_followed ? "max-h-[96px] opacity-100" : "max-h-0 opacity-0"
             )}>
               <div 
                 ref={firstErrorField === 'plan_deviation_reason' ? firstErrorRef : null}
-                style={{ lineHeight: `${LINE_HEIGHT}px`, paddingTop: '4px' }}
+                style={{ lineHeight: `${LINE_HEIGHT}px`, paddingTop: '2px' }}
               >
                 <textarea
                   value={formData.plan_deviation_reason}
                   onChange={(e) => updateField('plan_deviation_reason', e.target.value)}
                   placeholder="What broke the plan?"
                   rows={2}
+                  spellCheck={false}
                   className={cn(
                     "w-full bg-transparent border-none outline-none resize-none",
-                    "text-[hsl(0,50%,40%)] placeholder:text-[hsl(0,30%,60%)] italic",
-                    "font-body text-[15px] leading-[28px]",
-                    hasError('plan_deviation_reason') && "underline decoration-wavy decoration-[hsl(0,60%,55%)]"
+                    hasError('plan_deviation_reason') && "underline decoration-dotted"
                   )}
-                  style={{ lineHeight: `${LINE_HEIGHT}px` }}
+                  style={{ 
+                    color: INK.error,
+                    fontFamily: "'Source Serif 4', Georgia, serif",
+                    fontSize: '15px',
+                    lineHeight: `${LINE_HEIGHT}px`,
+                    fontStyle: 'italic',
+                    textDecorationColor: hasError('plan_deviation_reason') ? 'rgba(139,58,58,0.5)' : 'transparent',
+                  }}
                 />
               </div>
             </div>
@@ -368,10 +469,10 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({ onSaved }) =
               />
             </div>
 
-            {/* Tomorrow's Priority - emphasized with underline */}
+            {/* Tomorrow's Priority - emphasized */}
             <div 
               ref={firstErrorField === 'tomorrow_goal' ? firstErrorRef : null}
-              className="relative pt-4"
+              className="relative pt-6"
             >
               <div className="relative">
                 <input
@@ -381,26 +482,30 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({ onSaved }) =
                     const val = e.target.value.replace(/[\r\n]/g, '');
                     updateField('tomorrow_goal', val);
                   }}
-                  placeholder="Tomorrow's single priority…"
+                  placeholder={formData.tomorrow_goal ? '' : "Tomorrow's single priority…"}
                   maxLength={255}
-                  className={cn(
-                    "w-full bg-transparent border-none outline-none",
-                    "text-[hsl(220,30%,20%)] placeholder:text-[hsl(220,10%,60%)]",
-                    "font-medium text-base",
-                    hasError('tomorrow_goal') && "text-[hsl(0,50%,45%)]"
-                  )}
+                  spellCheck={false}
+                  className="w-full bg-transparent border-none outline-none"
                   style={{ 
+                    color: hasError('tomorrow_goal') ? INK.error : INK.primary,
+                    fontFamily: "'Source Serif 4', Georgia, serif",
+                    fontSize: '18px',
+                    fontWeight: 500,
                     lineHeight: `${LINE_HEIGHT}px`,
                     height: `${LINE_HEIGHT}px`,
+                    caretColor: INK.accent,
                   }}
                 />
                 {/* Thicker underline for emphasis */}
-                <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-[hsl(220,30%,70%)]" />
+                <div 
+                  className="absolute bottom-0 left-0 right-0"
+                  style={{ height: '2px', backgroundColor: 'rgba(100,120,140,0.3)' }}
+                />
               </div>
             </div>
 
             {/* Additional notes - lighter emphasis */}
-            <div className="pt-4 opacity-70">
+            <div className="pt-6" style={{ opacity: 0.65 }}>
               <LinedTextArea
                 value={formData.additional_notes}
                 onChange={(v) => updateField('additional_notes', v)}
@@ -412,17 +517,23 @@ export const JournalEntryForm: React.FC<JournalEntryFormProps> = ({ onSaved }) =
           </div>
 
           {/* Save Button - subtle, bottom right */}
-          <div className="flex justify-end mt-6 pb-2">
+          <div className="flex justify-end mt-8 pb-2">
             <button
               onClick={handleSave}
               disabled={saving}
-              className={cn(
-                "px-5 py-1.5 rounded text-sm font-medium transition-all",
-                "bg-[hsl(220,50%,45%)] text-white hover:bg-[hsl(220,50%,40%)]",
-                "disabled:opacity-50 disabled:cursor-not-allowed",
-                "shadow-sm hover:shadow",
-                !isFormValid && "opacity-60"
-              )}
+              className="transition-all duration-150 disabled:opacity-40"
+              style={{
+                padding: '8px 20px',
+                borderRadius: '3px',
+                fontSize: '14px',
+                fontWeight: 500,
+                fontFamily: "'Source Serif 4', Georgia, serif",
+                color: isFormValid ? '#fff' : 'rgba(255,255,255,0.8)',
+                backgroundColor: isFormValid ? 'rgba(60,80,110,0.9)' : 'rgba(100,110,120,0.6)',
+                border: 'none',
+                cursor: saving ? 'not-allowed' : 'pointer',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+              }}
             >
               {saving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
