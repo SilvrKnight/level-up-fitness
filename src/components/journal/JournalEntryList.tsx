@@ -10,6 +10,8 @@ interface JournalEntryListProps {
   onSelectEntry?: (entry: JournalEntry) => void;
 }
 
+const LINE_HEIGHT = 24;
+
 export const JournalEntryList: React.FC<JournalEntryListProps> = ({ onSelectEntry }) => {
   const { entries, loading } = useJournalEntries();
 
@@ -23,82 +25,146 @@ export const JournalEntryList: React.FC<JournalEntryListProps> = ({ onSelectEntr
 
   if (entries.length === 0) {
     return (
-      <div className="text-center py-16 text-muted-foreground">
-        <p className="text-sm">No entries yet</p>
-        <p className="text-xs text-muted-foreground/60 mt-1">Start journaling to see your history</p>
+      <div className="max-w-3xl mx-auto px-4">
+        <div 
+          className="bg-[hsl(45,30%,96%)] rounded-sm p-8 text-center"
+          style={{
+            boxShadow: `
+              0 1px 3px rgba(0,0,0,0.12),
+              0 4px 12px rgba(0,0,0,0.08)
+            `,
+          }}
+        >
+          <p className="text-[hsl(220,15%,45%)] text-sm">No entries yet</p>
+          <p className="text-[hsl(220,15%,60%)] text-xs mt-1">
+            Start journaling to see your history
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-3xl mx-auto px-4">
       <ScrollArea className="h-[600px]">
-        <div className="space-y-3 pr-4">
+        <div className="space-y-4 pr-4">
           {entries.map((entry, index) => (
             <div
               key={entry.id}
               onClick={() => onSelectEntry?.(entry)}
               className={cn(
-                "group cursor-pointer rounded-xl p-5 transition-all duration-200",
-                "bg-card/30 border border-border/30",
-                "hover:bg-card/50 hover:border-border/50",
+                "relative cursor-pointer rounded-sm overflow-hidden transition-all duration-200",
+                "hover:translate-y-[-2px]",
                 "fade-in"
               )}
-              style={{ animationDelay: `${index * 50}ms` }}
+              style={{ 
+                animationDelay: `${index * 50}ms`,
+                boxShadow: `
+                  0 1px 2px rgba(0,0,0,0.08),
+                  0 2px 8px rgba(0,0,0,0.06),
+                  0 4px 16px rgba(0,0,0,0.04)
+                `,
+              }}
             >
-              {/* Header row */}
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-foreground">
-                    {format(new Date(entry.entry_date), 'EEE, MMM d')}
-                  </span>
-                  
-                  {/* Energy indicator */}
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4, 5].map((level) => (
-                      <div
-                        key={level}
-                        className={cn(
-                          "w-1.5 h-1.5 rounded-full transition-colors",
-                          level <= (entry.energy_level ?? 0)
-                            ? "bg-primary"
-                            : "bg-muted/50"
-                        )}
-                      />
-                    ))}
-                  </div>
-                </div>
+              {/* Paper surface */}
+              <div className="bg-[hsl(45,30%,96%)] relative">
+                {/* Red margin line */}
+                <div 
+                  className="absolute top-0 bottom-0 w-px bg-[hsl(0,50%,80%)]" 
+                  style={{ left: '48px' }}
+                />
+                
+                {/* Ruled lines background */}
+                <div 
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    backgroundImage: `repeating-linear-gradient(
+                      to bottom,
+                      transparent,
+                      transparent ${LINE_HEIGHT - 1}px,
+                      hsl(210 20% 88%) ${LINE_HEIGHT - 1}px,
+                      hsl(210 20% 88%) ${LINE_HEIGHT}px
+                    )`,
+                    backgroundPosition: '0 12px',
+                  }}
+                />
 
-                {/* Plan followed indicator */}
-                {entry.plan_followed !== null && (
-                  <div className={cn(
-                    "flex items-center justify-center w-5 h-5 rounded-full",
-                    entry.plan_followed 
-                      ? "bg-success/20 text-success" 
-                      : "bg-destructive/20 text-destructive"
-                  )}>
-                    {entry.plan_followed ? (
-                      <Check className="h-3 w-3" />
-                    ) : (
-                      <X className="h-3 w-3" />
+                {/* Content */}
+                <div className="relative pl-14 pr-6 py-3">
+                  {/* Date in margin */}
+                  <div className="absolute left-2 top-3 flex flex-col items-center">
+                    <span className="text-[10px] text-[hsl(220,10%,55%)] font-medium">
+                      {format(new Date(entry.entry_date), 'MMM')}
+                    </span>
+                    <span className="text-sm text-[hsl(220,15%,35%)] font-semibold leading-none">
+                      {format(new Date(entry.entry_date), 'd')}
+                    </span>
+                  </div>
+
+                  {/* Header row */}
+                  <div 
+                    className="flex items-center justify-between"
+                    style={{ height: `${LINE_HEIGHT}px`, lineHeight: `${LINE_HEIGHT}px` }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-[hsl(220,15%,30%)] font-medium">
+                        {format(new Date(entry.entry_date), 'EEEE')}
+                      </span>
+                      
+                      {/* Energy dots */}
+                      <div className="flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map((level) => (
+                          <div
+                            key={level}
+                            className={cn(
+                              "w-1.5 h-1.5 rounded-full transition-colors",
+                              level <= (entry.energy_level ?? 0)
+                                ? "bg-[hsl(220,60%,50%)]"
+                                : "bg-[hsl(220,15%,80%)]"
+                            )}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Plan followed indicator */}
+                    {entry.plan_followed !== null && (
+                      <div className={cn(
+                        "flex items-center justify-center w-4 h-4 rounded",
+                        entry.plan_followed 
+                          ? "bg-[hsl(145,40%,85%)] text-[hsl(145,50%,35%)]" 
+                          : "bg-[hsl(0,40%,90%)] text-[hsl(0,50%,45%)]"
+                      )}>
+                        {entry.plan_followed ? (
+                          <Check className="h-2.5 w-2.5" />
+                        ) : (
+                          <X className="h-2.5 w-2.5" />
+                        )}
+                      </div>
                     )}
                   </div>
-                )}
+
+                  {/* Lesson preview */}
+                  {entry.what_i_learned && (
+                    <p 
+                      className="text-[13px] text-[hsl(220,15%,40%)] line-clamp-2"
+                      style={{ lineHeight: `${LINE_HEIGHT}px` }}
+                    >
+                      {entry.what_i_learned}
+                    </p>
+                  )}
+
+                  {/* Tomorrow's priority */}
+                  {entry.tomorrow_goal && (
+                    <p 
+                      className="text-[13px] text-[hsl(220,40%,45%)] font-medium line-clamp-1 border-b border-[hsl(220,30%,75%)] inline-block"
+                      style={{ lineHeight: `${LINE_HEIGHT}px` }}
+                    >
+                      {entry.tomorrow_goal}
+                    </p>
+                  )}
+                </div>
               </div>
-
-              {/* Lesson preview */}
-              {entry.what_i_learned && (
-                <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 pl-0">
-                  {entry.what_i_learned}
-                </p>
-              )}
-
-              {/* Tomorrow's priority preview */}
-              {entry.tomorrow_goal && (
-                <p className="text-xs text-primary/70 mt-2 line-clamp-1">
-                  → {entry.tomorrow_goal}
-                </p>
-              )}
             </div>
           ))}
         </div>
