@@ -1,38 +1,62 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Layout } from '@/components/layout/Layout';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { CheckCircle2, Circle, Dumbbell, Droplet, Ban } from 'lucide-react';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
-import { cn } from '@/lib/utils';
+import { 
+  format, 
+  startOfWeek, 
+  endOfWeek, 
+  eachDayOfInterval, 
+  addWeeks, 
+  subWeeks,
+  subDays,
+  isSameDay,
+  startOfDay,
+  isBefore
+} from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-
-const habitIcons: Record<string, React.ElementType> = {
-  'Gym': Dumbbell,
-  'Water Intake': Droplet,
-  'No Junk Food': Ban,
-};
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import HabitScorecard from '@/components/habits/HabitScorecard';
 
 const Habits: React.FC = () => {
   const { user, profile, loading } = useAuth();
   const { toast } = useToast();
   const [habits, setHabits] = useState<any[]>([]);
   const [habitLogs, setHabitLogs] = useState<any[]>([]);
-  const [currentDate] = useState(new Date());
+  const [currentWeekStart, setCurrentWeekStart] = useState(() => 
+    startOfWeek(new Date(), { weekStartsOn: 1 })
+  );
+  const [expandedHabit, setExpandedHabit] = useState<string | null>(null);
 
-  const monthStart = startOfMonth(currentDate);
-  const monthEnd = endOfMonth(currentDate);
-  const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  const weekDays = useMemo(() => 
+    eachDayOfInterval({ 
+      start: currentWeekStart, 
+      end: endOfWeek(currentWeekStart, { weekStartsOn: 1 }) 
+    }),
+    [currentWeekStart]
+  );
+
+  // Extended days for expanded view (21 days back from today)
+  const extendedDays = useMemo(() => {
+    const today = new Date();
+    const start = subDays(today, 20);
+    return eachDayOfInterval({ start, end: today });
+  }, []);
+
+  // Fetch range for logs (covers both week view and extended view)
+  const fetchStart = useMemo(() => {
+    const weekStart = format(currentWeekStart, 'yyyy-MM-dd');
+    const extendedStart = format(subDays(new Date(), 30), 'yyyy-MM-dd');
+    return weekStart < extendedStart ? weekStart : extendedStart;
+  }, [currentWeekStart]);
 
   useEffect(() => {
     if (user) {
       fetchHabits();
       fetchHabitLogs();
     }
-  }, [user]);
+  }, [user, fetchStart]);
 
   const fetchHabits = async () => {
     const { data } = await supabase.from('habits').select('*');
@@ -44,8 +68,7 @@ const Habits: React.FC = () => {
       .from('habit_logs')
       .select('*')
       .eq('user_id', user!.id)
-      .gte('log_date', format(monthStart, 'yyyy-MM-dd'))
-      .lte('log_date', format(monthEnd, 'yyyy-MM-dd'));
+      .gte('log_date', fetchStart);
     if (data) setHabitLogs(data);
   };
 
@@ -67,17 +90,87 @@ const Habits: React.FC = () => {
     }
   };
 
-  const isCompleted = (habitId: string, date: Date) => {
-    const dateStr = format(date, 'yyyy-MM-dd');
-    return habitLogs.some(l => l.habit_id === habitId && l.log_date === dateStr);
+  const getCompletedCount = (habitId: string) => {
+    return weekDays.filter(day => {
+      const dateStr = format(day, 'yyyy-MM-dd');
+      const today = startOfDay(new Date());
+      // Only count past days and today
+      if (isBefore(today, startOfDay(day))) return false;
+      return habitLogs.some(l => l.habit_id === habitId && l.log_date === dateStr);
+    }).length;
   };
 
-  const getCompletionRate = (habitId: string) => {
-    const today = new Date();
-    const daysPassed = daysInMonth.filter(d => d <= today).length;
-    const completed = habitLogs.filter(l => l.habit_id === habitId).length;
-    return daysPassed > 0 ? Math.round((completed / daysPassed) * 100) : 0;
+  const getStreak = (habitId: string) => {
+    let streak = 0;
+    let currentDate = startOfDay(new Date());
+    
+    // Check if today is completed, if not start from yesterday
+    const todayStr = format(currentDate, 'yyyy-MM-dd');
+    const todayCompleted = habitLogs.some(l => l.habit_id === habitId && l.log_date === todayStr);
+    if (!todayCompleted) {
+      currentDate = subDays(currentDate, 1);
+    }
+    
+    while (true) {
+      const dateStr = format(currentDate, 'yyyy-MM-dd');
+      const completed = habitLogs.some(l => l.habit_id === habitId && l.log_date === dateStr);
+      if (!completed) break;
+      streak++;
+      currentDate = subDays(currentDate, 1);
+    }
+    
+    return streak;
   };
+
+  const getLongestStreak = (habitId: string) => {
+    const logs = habitLogs
+      .filter(l => l.habit_id === habitId)
+      .map(l => l.log_date)
+      .sort();
+    
+    if (logs.length === 0) return 0;
+    
+    let longest = 1;
+    let current = 1;
+    
+    for (let i = 1; i < logs.length; i++) {
+      const prev = new Date(logs[i - 1]);
+      const curr = new Date(logs[i]);
+      const diffDays = Math.round((curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 1) {
+        current++;
+        longest = Math.max(longest, current);
+      } else {
+        current = 1;
+      }
+    }
+    
+    return longest;
+  };
+
+  const getLastBreakDate = (habitId: string) => {
+    let currentDate = subDays(startOfDay(new Date()), 1);
+    
+    for (let i = 0; i < 30; i++) {
+      const dateStr = format(currentDate, 'yyyy-MM-dd');
+      const completed = habitLogs.some(l => l.habit_id === habitId && l.log_date === dateStr);
+      if (!completed) {
+        return format(currentDate, 'MMM d');
+      }
+      currentDate = subDays(currentDate, 1);
+    }
+    
+    return null;
+  };
+
+  const navigateWeek = (direction: 'prev' | 'next') => {
+    setCurrentWeekStart(prev => 
+      direction === 'prev' ? subWeeks(prev, 1) : addWeeks(prev, 1)
+    );
+  };
+
+  const isCurrentWeek = isSameDay(currentWeekStart, startOfWeek(new Date(), { weekStartsOn: 1 }));
 
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
@@ -85,72 +178,111 @@ const Habits: React.FC = () => {
 
   return (
     <Layout>
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="font-display text-3xl font-bold text-foreground glow-text-cyan">Daily Quests</h1>
-          <p className="text-muted-foreground mt-1">{format(currentDate, 'MMMM yyyy')}</p>
-        </div>
+      <div className="min-h-screen bg-[hsl(222,47%,4%)]">
+        <div className="container mx-auto px-4 py-10 max-w-3xl">
+          {/* Page Header */}
+          <div className="mb-10">
+            <h1 
+              className="text-2xl font-medium text-[hsl(210,20%,92%)] tracking-tight"
+              style={{ fontFamily: "'Source Serif 4', 'Inter', serif" }}
+            >
+              Habits
+            </h1>
+            <p className="text-[13px] text-[hsl(222,15%,40%)] mt-1 tracking-wide">
+              Consistency over time
+            </p>
+          </div>
 
-        <div className="grid lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-3 space-y-6">
-            {habits.map(habit => {
-              const Icon = habitIcons[habit.name] || Circle;
+          {/* Week Selector */}
+          <div className="flex items-center justify-between mb-8">
+            <button
+              onClick={() => navigateWeek('prev')}
+              className="p-2 text-[hsl(222,15%,45%)] hover:text-[hsl(210,20%,75%)] transition-colors"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            
+            <div className="text-center">
+              <span 
+                className="text-[14px] text-[hsl(210,20%,80%)] tabular-nums"
+                style={{ fontFamily: "'Source Serif 4', 'Inter', serif" }}
+              >
+                {format(weekDays[0], 'MMM d')} – {format(weekDays[6], 'MMM d, yyyy')}
+              </span>
+              {isCurrentWeek && (
+                <span className="ml-2 text-[11px] text-[hsl(var(--primary)/0.7)] uppercase tracking-wider">
+                  This week
+                </span>
+              )}
+            </div>
+
+            <button
+              onClick={() => navigateWeek('next')}
+              className="p-2 text-[hsl(222,15%,45%)] hover:text-[hsl(210,20%,75%)] transition-colors"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Shared Day Labels */}
+          <div className="flex items-center gap-[2px] mb-4 px-5">
+            {weekDays.map((day, idx) => {
+              const isToday = isSameDay(day, new Date());
               return (
-                <Card key={habit.id} glow>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="flex items-center gap-2">
-                      <Icon className="h-5 w-5 text-primary" />
-                      {habit.name}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-7 gap-1">
-                      {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
-                        <div key={i} className="text-center text-xs text-muted-foreground py-1">{d}</div>
-                      ))}
-                      {Array(monthStart.getDay()).fill(null).map((_, i) => <div key={`empty-${i}`} />)}
-                      {daysInMonth.map(day => {
-                        const completed = isCompleted(habit.id, day);
-                        const isToday = isSameDay(day, new Date());
-                        return (
-                          <button
-                            key={day.toISOString()}
-                            onClick={() => toggleHabit(habit.id, day)}
-                            className={cn(
-                              "aspect-square rounded-md flex items-center justify-center text-xs transition-all",
-                              completed ? "bg-primary text-primary-foreground" : "bg-muted hover:bg-muted/80",
-                              isToday && !completed && "ring-1 ring-primary"
-                            )}
-                          >
-                            {completed ? <CheckCircle2 className="h-4 w-4" /> : format(day, 'd')}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </CardContent>
-                </Card>
+                <div 
+                  key={idx}
+                  className="flex-1 text-center"
+                >
+                  <span 
+                    className={`text-[11px] tracking-wider ${
+                      isToday 
+                        ? 'text-[hsl(var(--primary)/0.8)] border-b border-[hsl(var(--primary)/0.4)] pb-[2px]' 
+                        : 'text-[hsl(222,15%,40%)]'
+                    }`}
+                  >
+                    {format(day, 'EEE')}
+                  </span>
+                </div>
               );
             })}
           </div>
 
-          <div className="space-y-4">
-            <Card glow>
-              <CardHeader><CardTitle>Progress</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                {habits.map(habit => (
-                  <div key={habit.id}>
-                    <div className="flex justify-between text-sm mb-1">
-                      <span>{habit.name}</span>
-                      <span className="text-primary">{getCompletionRate(habit.id)}%</span>
-                    </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div className="h-full xp-bar" style={{ width: `${getCompletionRate(habit.id)}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+          {/* Habit Scorecards */}
+          <div className="space-y-3">
+            {habits.map(habit => (
+              <div 
+                key={habit.id}
+                className={`transition-opacity duration-200 ${
+                  expandedHabit && expandedHabit !== habit.id ? 'opacity-50' : 'opacity-100'
+                }`}
+              >
+                <HabitScorecard
+                  habit={habit}
+                  weekDays={weekDays}
+                  habitLogs={habitLogs}
+                  onToggle={toggleHabit}
+                  completedCount={getCompletedCount(habit.id)}
+                  streak={getStreak(habit.id)}
+                  isExpanded={expandedHabit === habit.id}
+                  onExpand={() => setExpandedHabit(
+                    expandedHabit === habit.id ? null : habit.id
+                  )}
+                  extendedDays={extendedDays}
+                  longestStreak={getLongestStreak(habit.id)}
+                  lastBreakDate={getLastBreakDate(habit.id)}
+                />
+              </div>
+            ))}
           </div>
+
+          {/* Empty State */}
+          {habits.length === 0 && (
+            <div className="text-center py-16">
+              <p className="text-[hsl(222,15%,40%)] text-[14px]">
+                No habits configured yet.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </Layout>
